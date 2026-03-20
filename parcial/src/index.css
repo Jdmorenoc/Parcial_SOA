@@ -34,7 +34,7 @@
   :root {
     --text: #9ca3af;
     --text-h: #f3f4f6;
-    --bg: #16171d;
+    --bg: #ffffff;
     --border: #2e303a;
     --code-bg: #1f2028;
     --accent: #c084fc;
@@ -52,18 +52,25 @@
 
 body {
   margin: 0;
+  background: linear-gradient(135deg, #ffffff 0%, #f5f7ff 100%);
+  min-height: 100vh;
+}
+
+html {
+  background: linear-gradient(135deg, #ffffff 0%, #f5f7ff 100%);
 }
 
 #root {
-  width: 1126px;
+  width: 100%;
   max-width: 100%;
   margin: 0 auto;
   text-align: center;
-  border-inline: 1px solid var(--border);
+  border-inline: none;
   min-height: 100svh;
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  background: linear-gradient(135deg, #ffffff 0%, #f5f7ff 100%);
 }
 
 h1,
