@@ -115,6 +115,13 @@ export default function RegisterPage() {
       console.log('========================');
 
       correosRegistrados.push(datosRegistro.email);
+
+      const usuariosGuardados = JSON.parse(localStorage.getItem('usuariosRegistrados') || '[]');
+      if (!usuariosGuardados.includes(datosRegistro.email)) {
+        usuariosGuardados.push(datosRegistro.email);
+        localStorage.setItem('usuariosRegistrados', JSON.stringify(usuariosGuardados));
+      }
+
       localStorage.setItem('nombreUsuario', datosRegistro.nombre);
       localStorage.setItem('apellidosUsuario', datosRegistro.apellidos);
       localStorage.setItem('emailUsuario', datosRegistro.email);
