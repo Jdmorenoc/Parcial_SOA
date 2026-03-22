@@ -9,6 +9,8 @@ export default function LoginPage() {
   });
 
   const [errors, setErrors] = useState({});
+  const [loginExitoso, setLoginExitoso] = useState(false);
+  const [mensajeExito, setMensajeExito] = useState('');
   const navigate = useNavigate();
 
   // Validar formato de email
@@ -25,6 +27,16 @@ export default function LoginPage() {
       newErrors.email = 'El correo electrónico es obligatorio';
     } else if (!validateEmail(formData.email)) {
       newErrors.email = 'Por favor ingresa un correo electrónico válido';
+    } else {
+      // Verificar si el correo está registrado
+      const usuariosGuardados = JSON.parse(localStorage.getItem('usuarios') || '[]');
+      const usuarioEncontrado = usuariosGuardados.find(
+        u => u.email.toLowerCase() === formData.email.toLowerCase()
+      );
+      
+      if (!usuarioEncontrado) {
+        newErrors.email = 'Este correo no está registrado. Crea una cuenta primero';
+      }
     }
 
     if (!formData.password.trim()) {
@@ -58,10 +70,43 @@ export default function LoginPage() {
     e.preventDefault();
 
     if (validateForm()) {
-      // Log en consola para debug
-      console.log('Datos enviados:', formData);
-      // Aquí iría la lógica para enviar datos al servidor
-      // Por ahora solo se valida y se registra en consola
+      // Obtener usuarios guardados
+      const usuariosGuardados = JSON.parse(localStorage.getItem('usuarios') || '[]');
+      const usuarioEncontrado = usuariosGuardados.find(
+        u => u.email.toLowerCase() === formData.email.toLowerCase()
+      );
+
+      // Validar que el usuario existe y la contraseña es correcta
+      if (usuarioEncontrado && usuarioEncontrado.password === formData.password) {
+        // Login exitoso
+        console.log('Login exitoso:', usuarioEncontrado);
+        localStorage.setItem('usuarioActivo', JSON.stringify({
+          nombre: usuarioEncontrado.nombre,
+          apellidos: usuarioEncontrado.apellidos,
+          email: usuarioEncontrado.email
+        }));
+
+        setMensajeExito(`Sesión iniciada correctamente. ¡Bienvenido ${usuarioEncontrado.nombre}!`);
+        setLoginExitoso(true);
+
+        // Limpiar el formulario
+        setFormData({
+          email: '',
+          password: ''
+        });
+
+        // Ocultar el mensaje después de 3 segundos
+        setTimeout(() => {
+          setLoginExitoso(false);
+          setMensajeExito('');
+        }, 3000);
+      } else if (usuarioEncontrado) {
+        // Usuario encontrado pero contraseña incorrecta
+        setErrors({
+          ...errors,
+          password: 'La contraseña es incorrecta'
+        });
+      }
     }
   };
 
@@ -137,6 +182,20 @@ export default function LoginPage() {
           </p>
         </div>
       </div>
+
+      {/* Toast de éxito */}
+      {loginExitoso && (
+        <div className="toast-container">
+          <div className="toast">
+            <div className="toast-icon">✓</div>
+            <div className="toast-text">
+              <span className="toast-title">¡Login exitoso!</span>
+              <span className="toast-sub">{mensajeExito}</span>
+            </div>
+            <div className="toast-progress" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
