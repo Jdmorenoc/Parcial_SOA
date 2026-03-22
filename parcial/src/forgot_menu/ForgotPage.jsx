@@ -28,8 +28,13 @@ export default function ForgotPage() {
       return false;
     }
 
-    const usuariosRegistrados = JSON.parse(localStorage.getItem('usuariosRegistrados') || '[]');
-    if (!usuariosRegistrados.includes(formData.email.toLowerCase())) {
+    // ✅ Buscar en localStorage.usuarios (actualizado)
+    const usuariosGuardados = JSON.parse(localStorage.getItem('usuarios') || '[]');
+    const usuarioEncontrado = usuariosGuardados.find(
+      u => u.email.toLowerCase() === formData.email.toLowerCase()
+    );
+
+    if (!usuarioEncontrado) {
       setErrors({ email: 'El correo no está registrado' });
       return false;
     }
@@ -47,13 +52,17 @@ export default function ForgotPage() {
     const timer = setTimeout(() => {
       setToastVisible(false);
       setForgotExitoso(false);
+      
+      // ✅ Guardar email temporalmente para ResetPage
+      localStorage.setItem('emailRecuperacion', formData.email.toLowerCase());
+      
       setFormData({ email: '' });
       setErrors({});
       navigate('/reset');
     }, 2500);
 
     return () => clearTimeout(timer);
-  }, [forgotExitoso, navigate]);
+  }, [forgotExitoso, navigate, formData.email]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;

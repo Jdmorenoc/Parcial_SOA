@@ -1,8 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './RegisterPage.css';
-
-const correosRegistrados = [];
 
 const initialForm = {
   nombre: '',
@@ -18,23 +16,6 @@ export default function RegisterPage() {
   const [registroExitoso, setRegistroExitoso] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
   const navigate = useNavigate();
-
-  // useEffect: muestra el toast, espera 2.5s y redirige
-  useEffect(() => {
-    if (!registroExitoso) return;
-
-    setToastVisible(true);
-
-    const timer = setTimeout(() => {
-      setToastVisible(false);
-      setRegistroExitoso(false);
-      setFormData(initialForm);
-      setErrors({});
-      navigate('/login');
-    }, 2500);
-
-    return () => clearTimeout(timer);
-  }, [registroExitoso, navigate]);
 
   const validateEmail = (email) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -68,8 +49,12 @@ export default function RegisterPage() {
       newErrors.email = 'El correo electrónico es obligatorio';
     } else if (!validateEmail(formData.email)) {
       newErrors.email = 'Por favor ingresa un correo electrónico válido';
-    } else if (correosRegistrados.includes(formData.email.toLowerCase())) {
-      newErrors.email = 'Este correo ya está registrado';
+    } else {
+      // Verificar si el correo ya está registrado
+      const usuariosGuardados = JSON.parse(localStorage.getItem('usuarios') || '[]');
+      if (usuariosGuardados.some(u => u.email.toLowerCase() === formData.email.toLowerCase())) {
+        newErrors.email = 'Este correo ya está registrado';
+      }
     }
 
     if (!formData.password) {
@@ -114,19 +99,36 @@ export default function RegisterPage() {
       console.log('Password:', datosRegistro.password);
       console.log('========================');
 
-      correosRegistrados.push(datosRegistro.email);
+      // Obtener usuarios existentes o crear array vacío
+      const usuariosGuardados = JSON.parse(localStorage.getItem('usuarios') || '[]');
+      
+      // Agregar nuevo usuario
+      usuariosGuardados.push({
+        nombre: datosRegistro.nombre,
+        apellidos: datosRegistro.apellidos,
+        email: datosRegistro.email,
+        password: datosRegistro.password
+      });
 
-      const usuariosGuardados = JSON.parse(localStorage.getItem('usuariosRegistrados') || '[]');
-      if (!usuariosGuardados.includes(datosRegistro.email)) {
-        usuariosGuardados.push(datosRegistro.email);
-        localStorage.setItem('usuariosRegistrados', JSON.stringify(usuariosGuardados));
-      }
+      // Guardar usuarios actualizados
+      localStorage.setItem('usuarios', JSON.stringify(usuariosGuardados));
 
-      localStorage.setItem('nombreUsuario', datosRegistro.nombre);
-      localStorage.setItem('apellidosUsuario', datosRegistro.apellidos);
-      localStorage.setItem('emailUsuario', datosRegistro.email);
+      // Guardar último usuario registrado para referencia
+      localStorage.setItem('ultimoRegistro', JSON.stringify({
+        nombre: datosRegistro.nombre,
+        apellidos: datosRegistro.apellidos,
+        email: datosRegistro.email
+      }));
 
+      setToastVisible(true);
       setRegistroExitoso(true);
+      setFormData(initialForm);
+      setErrors({});
+
+      // Ocultar el toast después de 3 segundos
+      setTimeout(() => {
+        setToastVisible(false);
+      }, 3000);
     }
   };
 
