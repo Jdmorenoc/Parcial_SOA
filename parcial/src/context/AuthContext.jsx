@@ -5,7 +5,8 @@ import {
   onAuthStateChanged,
   signOut,
 } from "firebase/auth";
-import { auth } from "../firebase/firebaseConfig";
+import { setDoc, doc } from "firebase/firestore";
+import { auth, db } from "../firebase/firebaseConfig";
 
 export const AuthContext = createContext();
 
@@ -19,8 +20,18 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const signup = async (email, password) => {
-    await createUserWithEmailAndPassword(auth, email, password);
+  const signup = async (email, password, userData) => {
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+    const user = userCredential.user;
+    
+    // Guardar datos adicionales en Firestore
+    await setDoc(doc(db, "users", user.uid), {
+      uid: user.uid,
+      email: email,
+      nombre: userData.nombre,
+      apellidos: userData.apellidos,
+      createdAt: new Date(),
+    });
   };
 
   const signin = async (email, password) => {

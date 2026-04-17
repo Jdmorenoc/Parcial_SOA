@@ -96,7 +96,10 @@ function RegisterPage() {
         password: formData.password,
       };
 
-      await signup(datosRegistro.email, datosRegistro.password);
+      await signup(datosRegistro.email, datosRegistro.password, {
+        nombre: datosRegistro.nombre,
+        apellidos: datosRegistro.apellidos,
+      });
 
       // Guardar información adicional del usuario si es necesario
       localStorage.setItem(
@@ -110,7 +113,7 @@ function RegisterPage() {
 
       setFormData(initialForm);
       setErrors({});
-      navigate("/");
+      navigate("/login");
     } catch (err) {
       setError(err.message || "Error al registrar el usuario");
       console.error("Error en registro:", err);
