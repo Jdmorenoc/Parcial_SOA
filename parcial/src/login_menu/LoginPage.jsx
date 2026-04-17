@@ -1,112 +1,79 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import './LoginPage.css';
+import { useState } from "react";
+import { useAuth } from "../context/AuthContext";
+import { useNavigate, Link } from "react-router-dom";
+import "./LoginPage.css";
 
-export default function LoginPage() {
+function LoginPage() {
   const [formData, setFormData] = useState({
-    email: '',
-    password: ''
+    email: "",
+    password: "",
   });
 
   const [errors, setErrors] = useState({});
-  const [loginExitoso, setLoginExitoso] = useState(false);
-  const [mensajeExito, setMensajeExito] = useState('');
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { signin } = useAuth();
 
-  // Validar formato de email
   const validateEmail = (email) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   };
 
-  // Validar formulario
   const validateForm = () => {
     const newErrors = {};
 
     if (!formData.email.trim()) {
-      newErrors.email = 'El correo electrónico es obligatorio';
+      newErrors.email = "El correo electrónico es obligatorio";
     } else if (!validateEmail(formData.email)) {
-      newErrors.email = 'Por favor ingresa un correo electrónico válido';
-    } else {
-      // Verificar si el correo está registrado
-      const usuariosGuardados = JSON.parse(localStorage.getItem('usuarios') || '[]');
-      const usuarioEncontrado = usuariosGuardados.find(
-        u => u.email.toLowerCase() === formData.email.toLowerCase()
-      );
-      
-      if (!usuarioEncontrado) {
-        newErrors.email = 'Este correo no está registrado. Crea una cuenta primero';
-      }
+      newErrors.email = "Por favor ingresa un correo electrónico válido";
     }
 
     if (!formData.password.trim()) {
-      newErrors.password = 'La contraseña es obligatoria';
+      newErrors.password = "La contraseña es obligatoria";
     } else if (formData.password.length < 6) {
-      newErrors.password = 'La contraseña debe tener al menos 6 caracteres';
+      newErrors.password = "La contraseña debe tener al menos 6 caracteres";
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-  // Manejar cambios en los inputs
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData({
-      ...formData,
-      [name]: value
-    });
-    // Limpiar error del campo cuando el usuario empieza a escribir
+    setFormData((prev) => ({ ...prev, [name]: value }));
     if (errors[name]) {
-      setErrors({
-        ...errors,
-        [name]: ''
-      });
+      setErrors((prev) => ({ ...prev, [name]: "" }));
     }
   };
 
-  // Manejar envío del formulario
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setError("");
 
-    if (validateForm()) {
-      // Obtener usuarios guardados
-      const usuariosGuardados = JSON.parse(localStorage.getItem('usuarios') || '[]');
-      const usuarioEncontrado = usuariosGuardados.find(
-        u => u.email.toLowerCase() === formData.email.toLowerCase()
-      );
+    if (!validateForm()) {
+      return;
+    }
 
-      // Validar que el usuario existe y la contraseña es correcta
-      if (usuarioEncontrado && usuarioEncontrado.password === formData.password) {
-        // Login exitoso
-        console.log('Login exitoso:', usuarioEncontrado);
-        localStorage.setItem('usuarioActivo', JSON.stringify({
-          nombre: usuarioEncontrado.nombre,
-          apellidos: usuarioEncontrado.apellidos,
-          email: usuarioEncontrado.email
-        }));
+    setLoading(true);
 
-        setMensajeExito(`Sesión iniciada correctamente. ¡Bienvenido ${usuarioEncontrado.nombre}!`);
-        setLoginExitoso(true);
-
-        // Limpiar el formulario
-        setFormData({
-          email: '',
-          password: ''
-        });
-
-        // Ocultar el mensaje después de 3 segundos
-        setTimeout(() => {
-          setLoginExitoso(false);
-          setMensajeExito('');
-        }, 3000);
-      } else if (usuarioEncontrado) {
-        // Usuario encontrado pero contraseña incorrecta
-        setErrors({
-          ...errors,
-          password: 'La contraseña es incorrecta'
-        });
+    try {
+      await signin(formData.email.toLowerCase(), formData.password);
+      setFormData({ email: "", password: "" });
+      navigate("/");
+    } catch (err) {
+      // Mensajes de error más claros de Firebase
+      if (err.code === "auth/user-not-found") {
+        setError("Este correo no está registrado. Crea una cuenta primero");
+      } else if (err.code === "auth/wrong-password") {
+        setError("La contraseña es incorrecta");
+      } else if (err.code === "auth/invalid-email") {
+        setError("El correo electrónico no es válido");
+      } else {
+        setError(err.message || "Error al iniciar sesión");
       }
+      console.error("Error en login:", err);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -117,6 +84,24 @@ export default function LoginPage() {
           <h1>Iniciar Sesión</h1>
           <p>Bienvenido de vuelta</p>
         </div>
+
+        {/* Alert de error */}
+        {error && (
+          <div
+            style={{
+              marginBottom: "20px",
+              padding: "12px 16px",
+              backgroundColor: "#fff5f5",
+              border: "2px solid #e74c3c",
+              borderRadius: "8px",
+              color: "#e74c3c",
+              fontSize: "14px",
+              fontWeight: "600",
+            }}
+          >
+            {error}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="login-form">
           {/* Campo de Email */}
@@ -129,7 +114,7 @@ export default function LoginPage() {
               value={formData.email}
               onChange={handleInputChange}
               placeholder="ejemplo@correo.com"
-              className={errors.email ? 'input-error' : ''}
+              className={errors.email ? "input-error" : ""}
             />
             {errors.email && (
               <span className="error-message">{errors.email}</span>
@@ -146,7 +131,7 @@ export default function LoginPage() {
               value={formData.password}
               onChange={handleInputChange}
               placeholder="Ingresa tu contraseña"
-              className={errors.password ? 'input-error' : ''}
+              className={errors.password ? "input-error" : ""}
             />
             {errors.password && (
               <span className="error-message">{errors.password}</span>
@@ -154,48 +139,35 @@ export default function LoginPage() {
           </div>
 
           {/* Botón de Envío */}
-          <button type="submit" className="btn-login">
-            Iniciar Sesión
+          <button
+            type="submit"
+            disabled={loading}
+            className="btn-login"
+            style={{ opacity: loading ? 0.7 : 1 }}
+          >
+            {loading ? "Iniciando sesión..." : "Iniciar Sesión"}
           </button>
         </form>
 
         {/* Enlaces de Navegación */}
         <div className="login-links">
-          <a
-            onClick={() => navigate('/forgot')}
-            className="link-forgot"
-          >
+          <Link to="/forgot" className="link-forgot">
             ¿Olvidaste tu contraseña?
-          </a>
+          </Link>
         </div>
 
         {/* Sección de Registro */}
         <div className="login-footer">
           <p>
-            ¿No tienes cuenta?{' '}
-            <a
-              onClick={() => navigate('/register')}
-              className="link-register"
-            >
+            ¿No tienes cuenta?{" "}
+            <Link to="/register" className="link-register">
               Crea una aquí
-            </a>
+            </Link>
           </p>
         </div>
       </div>
-
-      {/* Toast de éxito */}
-      {loginExitoso && (
-        <div className="toast-container">
-          <div className="toast">
-            <div className="toast-icon">✓</div>
-            <div className="toast-text">
-              <span className="toast-title">¡Login exitoso!</span>
-              <span className="toast-sub">{mensajeExito}</span>
-            </div>
-            <div className="toast-progress" />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
+
+export default LoginPage;

@@ -28,7 +28,7 @@ export default function ForgotPage() {
       return false;
     }
 
-    // ✅ Buscar en localStorage.usuarios (actualizado)
+    // Buscar en localStorage.usuarios (actualizado)
     const usuariosGuardados = JSON.parse(localStorage.getItem('usuarios') || '[]');
     const usuarioEncontrado = usuariosGuardados.find(
       u => u.email.toLowerCase() === formData.email.toLowerCase()
@@ -53,7 +53,7 @@ export default function ForgotPage() {
       setToastVisible(false);
       setForgotExitoso(false);
       
-      // ✅ Guardar email temporalmente para ResetPage
+      // Guardar email temporalmente para ResetPage
       localStorage.setItem('emailRecuperacion', formData.email.toLowerCase());
       
       setFormData({ email: '' });
