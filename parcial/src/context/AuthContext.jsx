@@ -2,11 +2,12 @@ import { createContext, useContext, useEffect, useState } from "react";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signInWithPopup,
   onAuthStateChanged,
   signOut,
 } from "firebase/auth";
-import { setDoc, doc } from "firebase/firestore";
-import { auth, db } from "../firebase/firebaseConfig";
+import { setDoc, doc, getDoc } from "firebase/firestore";
+import { auth, db, googleProvider } from "../firebase/firebaseConfig";
 
 export const AuthContext = createContext();
 
@@ -38,6 +39,30 @@ export function AuthProvider({ children }) {
     await signInWithEmailAndPassword(auth, email, password);
   };
 
+  const signInWithGoogle = async () => {
+    const userCredential = await signInWithPopup(auth, googleProvider);
+    const user = userCredential.user;
+
+    // Verificar si el usuario ya existe en Firestore
+    const userDocRef = doc(db, "users", user.uid);
+    const userDocSnap = await getDoc(userDocRef);
+
+    // Si no existe, crear un nuevo documento
+    if (!userDocSnap.exists()) {
+      await setDoc(userDocRef, {
+        uid: user.uid,
+        email: user.email,
+        nombre: user.displayName || "",
+        apellidos: "",
+        photoURL: user.photoURL || "",
+        createdAt: new Date(),
+        registroConGoogle: true,
+      });
+    }
+
+    return user;
+  };
+
   const logout = async () => {
     await signOut(auth);
   };
@@ -56,6 +81,7 @@ export function AuthProvider({ children }) {
       value={{
         signup,
         signin,
+        signInWithGoogle,
         logout,
         user,
         loading,
