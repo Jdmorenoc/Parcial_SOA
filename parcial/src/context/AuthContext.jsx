@@ -7,7 +7,7 @@ import {
   signOut,
 } from "firebase/auth";
 import { setDoc, doc, getDoc } from "firebase/firestore";
-import { auth, db, googleProvider } from "../firebase/firebaseConfig";
+import { auth, db, googleProvider, facebookProvider } from "../firebase/firebaseConfig";
 
 export const AuthContext = createContext();
 
@@ -63,6 +63,30 @@ export function AuthProvider({ children }) {
     return user;
   };
 
+  const signInWithFacebook = async () => {
+    const userCredential = await signInWithPopup(auth, facebookProvider);
+    const user = userCredential.user;
+
+    // Verificar si el usuario ya existe en Firestore
+    const userDocRef = doc(db, "users", user.uid);
+    const userDocSnap = await getDoc(userDocRef);
+
+    // Si no existe, crear un nuevo documento
+    if (!userDocSnap.exists()) {
+      await setDoc(userDocRef, {
+        uid: user.uid,
+        email: user.email || "",
+        nombre: user.displayName || "",
+        apellidos: "",
+        photoURL: user.photoURL || "",
+        createdAt: new Date(),
+        registroConFacebook: true,
+      });
+    }
+
+    return user;
+  };
+
   const logout = async () => {
     await signOut(auth);
   };
@@ -82,6 +106,7 @@ export function AuthProvider({ children }) {
         signup,
         signin,
         signInWithGoogle,
+        signInWithFacebook,
         logout,
         user,
         loading,
