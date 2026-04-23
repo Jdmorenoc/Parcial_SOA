@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, FacebookAuthProvider } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, FacebookAuthProvider, GithubAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -19,3 +19,7 @@ googleProvider.setCustomParameters({ prompt: "select_account" });
 
 export const facebookProvider = new FacebookAuthProvider();
 facebookProvider.setCustomParameters({ display: "popup" });
+
+export const githubProvider = new GithubAuthProvider();
+githubProvider.addScope("read:user");
+githubProvider.addScope("user:email");
