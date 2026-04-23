@@ -7,7 +7,7 @@ import {
   signOut,
 } from "firebase/auth";
 import { setDoc, doc, getDoc } from "firebase/firestore";
-import { auth, db, googleProvider, facebookProvider } from "../firebase/firebaseConfig";
+import { auth, db, googleProvider, facebookProvider, githubProvider } from "../firebase/firebaseConfig";
 
 export const AuthContext = createContext();
 
@@ -87,6 +87,28 @@ export function AuthProvider({ children }) {
     return user;
   };
 
+  const signInWithGithub = async () => {
+  const userCredential = await signInWithPopup(auth, githubProvider);
+  const user = userCredential.user;
+
+  const userDocRef = doc(db, "users", user.uid);
+  const userDocSnap = await getDoc(userDocRef);
+
+  if (!userDocSnap.exists()) {
+    await setDoc(userDocRef, {
+      uid: user.uid,
+      email: user.email || "",
+      nombre: user.displayName || "",
+      apellidos: "",
+      photoURL: user.photoURL || "",
+      createdAt: new Date(),
+      registroConGithub: true,
+    });
+  }
+
+  return user;
+};
+
   const logout = async () => {
     await signOut(auth);
   };
@@ -107,6 +129,7 @@ export function AuthProvider({ children }) {
         signin,
         signInWithGoogle,
         signInWithFacebook,
+        signInWithGithub,
         logout,
         user,
         loading,
