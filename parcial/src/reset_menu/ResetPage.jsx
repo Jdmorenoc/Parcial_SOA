@@ -14,7 +14,7 @@ export default function ResetPage() {
   const [mensajeError, setMensajeError] = useState('');
   const navigate = useNavigate();
 
-  // ✅ Obtener email del localStorage al montar el componente
+  // Obtener email del localStorage al montar el componente
   useEffect(() => {
     const email = localStorage.getItem('emailRecuperacion');
     if (!email) {
@@ -65,7 +65,7 @@ export default function ResetPage() {
       setFormData({ password: '', confirmPassword: '' });
       setErrors({});
       
-      // ✅ Limpiar email de recuperación
+      // Limpiar email de recuperación
       localStorage.removeItem('emailRecuperacion');
       
       navigate('/login');
@@ -84,7 +84,7 @@ export default function ResetPage() {
     e.preventDefault();
 
     if (validateForm() && emailRecuperacion) {
-      // ✅ Obtener usuarios y actualizar contraseña
+      // Obtener usuarios y actualizar contraseña
       const usuariosGuardados = JSON.parse(localStorage.getItem('usuarios') || '[]');
       const usuarioIndex = usuariosGuardados.findIndex(
         u => u.email.toLowerCase() === emailRecuperacion.toLowerCase()
