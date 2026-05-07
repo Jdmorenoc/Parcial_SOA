@@ -1,11 +1,11 @@
 import { Routes, Route } from "react-router-dom";
-import Home from "./components/home_menu/Home";
-import LoginPage from "./login_menu/LoginPage";
-import RegisterPage from "./register_menu/RegisterPage";
-import ForgotPage from "./forgot_menu/ForgotPage";
-import ResetPage from "./reset_menu/ResetPage";
+import Home from "./pages/Home/Home";
+import LoginPage from "./pages/Login/LoginPage";
+import RegisterPage from "./pages/Register/RegisterPage";
+import ForgotPage from "./pages/Forgot/ForgotPage";
+import ResetPage from "./pages/Reset/ResetPage";
 import { AuthProvider } from "./context/AuthContext";
-import { ProtectedRoutes } from "./components/ProtectedRoutes";
+import { ProtectedRoutes } from "./pages/ProtectedRoutes/ProtectedRoutes";
 import "./App.css";
 
 function App() {
