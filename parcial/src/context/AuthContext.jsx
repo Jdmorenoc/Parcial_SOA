@@ -5,6 +5,7 @@ import {
   signInWithPopup,
   onAuthStateChanged,
   signOut,
+  FacebookAuthProvider,
 } from "firebase/auth";
 import {
   setDoc,
@@ -54,12 +55,19 @@ export function AuthProvider({ children }) {
       where("status", "==", "Activa")
     );
     const querySnapshot = await getDocs(q);
+    
+    // Esperar a que se actualicen todos los documentos antes de cerrar sesión
+    const updatePromises = [];
     querySnapshot.forEach((document) => {
-      updateDoc(doc(db, "sessionHistory", document.id), {
-        endTime: serverTimestamp(),
-        status: "Finalizado",
-      });
+      updatePromises.push(
+        updateDoc(doc(db, "sessionHistory", document.id), {
+          endTime: serverTimestamp(),
+          status: "Finalizado",
+        })
+      );
     });
+    
+    await Promise.all(updatePromises);
   };
 
   const signup = async (email, password, userData) => {
@@ -108,50 +116,62 @@ export function AuthProvider({ children }) {
 
   const signInWithFacebook = async () => {
     const userCredential = await signInWithPopup(auth, facebookProvider);
-    const displayNameParts = (user.displayName || "").split(" ");
+    const authUser = userCredential.user;
+    const displayNameParts = (authUser.displayName || "").split(" ");
+
+    // Obtener el Access Token para poder ver la foto real de Facebook
+    const credential = FacebookAuthProvider.credentialFromResult(userCredential) || null;
+    let fbPhotoURL = authUser.photoURL || "";
+    
+    if (fbPhotoURL && fbPhotoURL.includes("facebook.com")) {
+      fbPhotoURL = fbPhotoURL + "?type=large";
+      // Si tenemos el token de acceso, lo añadimos para evitar la silueta en blanco
+      if (credential && credential.accessToken) {
+        fbPhotoURL += "&access_token=" + credential.accessToken;
+      }
+    }
 
     // Verificar si el usuario ya existe en Firestore
-    const userDocRef = doc(db, "users", user.uid);
+    const userDocRef = doc(db, "users", authUser.uid);
     const userDocSnap = await getDoc(userDocRef);
 
-    // Si no existe, crear un nuevo documento
-    if (!userDocSnap.exists()) {
+    // Si no existe, o si su foto estaba en blanco/silueta, la actualizamos
+    if (!userDocSnap.exists() || !userDocSnap.data().photoURL || userDocSnap.data().photoURL.includes("facebook.com")) {
       await setDoc(userDocRef, {
-        uid: user.uid,
-        email: user.email || "",
+        uid: authUser.uid,
+        email: authUser.email || "",
         nombre: displayNameParts[0] || "",
-        apellidos: displayNameParts || "",
-        apellidos: user.displayName.split(' ')[1] || "",
-        photoURL: user.photoURL || "",
-        createdAt: new Date(),
+        apellidos: displayNameParts.slice(1).join(" ") || "",
+        photoURL: fbPhotoURL,
+        createdAt: userDocSnap.exists() ? userDocSnap.data().createdAt : new Date(),
         registroConFacebook: true,
-      });
+      }, { merge: true });
     }
-    await logSessionStart(user);
-    return user;
+    await logSessionStart(authUser);
+    return authUser;
   };
 
   const signInWithGithub = async () => {
     const userCredential = await signInWithPopup(auth, githubProvider);
-    const displayNameParts = (user.displayName || "").split(" ");
+    const authUser = userCredential.user;
+    const displayNameParts = (authUser.displayName || "").split(" ");
 
-    const userDocRef = doc(db, "users", user.uid);
+    const userDocRef = doc(db, "users", authUser.uid);
     const userDocSnap = await getDoc(userDocRef);
 
     if (!userDocSnap.exists()) {
       await setDoc(userDocRef, {
-        uid: user.uid,
-        email: user.email || "",
+        uid: authUser.uid,
+        email: authUser.email || "",
         nombre: displayNameParts[0] || "",
-        apellidos: displayNameParts || "",
-        apellidos: user.displayName.split(' ')[1] || "",
-        photoURL: user.photoURL || "",
+        apellidos: displayNameParts.slice(1).join(" ") || "",
+        photoURL: authUser.photoURL || "",
         createdAt: new Date(),
         registroConGithub: true,
       });
     }
-    await logSessionStart(user);
-    return user;
+    await logSessionStart(authUser);
+    return authUser;
   };
 
   const logout = async () => {
