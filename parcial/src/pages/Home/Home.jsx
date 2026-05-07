@@ -78,12 +78,7 @@ function Home() {
       console.error("Error al cerrar sesión:", error);
     }
   };
-{userData && (
-              <h2 className="user-name-display">
-                {userData.nombre} {userData.apellidos}
-              </h2>
-            )}
-            
+
   const formatDate = (timestamp) => {
     if (!timestamp) return "Sesión activa";
     return new Date(timestamp.seconds * 1000).toLocaleString("es-CO", {
@@ -98,7 +93,21 @@ function Home() {
         {/* Panel Izquierdo - Bienvenida */}
         <div className="panel-welcome">
           <div className="welcome-header">
+            <div className="profile-photo-container">
+              {user?.photoURL || userData?.photoURL ? (
+                <img src={user?.photoURL || userData?.photoURL} alt="Perfil" className="profile-photo" />
+              ) : (
+                <div className="profile-placeholder">
+                  {userData?.nombre?.charAt(0) || user?.email?.charAt(0) || "U"}
+                </div>
+              )}
+            </div>
             <h3>¡Bienvenido!</h3>
+            {(userData || user?.displayName) && (
+              <h2 className="user-name-display">
+                {user?.displayName || (userData ? `${userData.nombre || ""} ${userData.apellidos || ""}`.trim() : "")}
+              </h2>
+            )}
             <p>Tu sesión ha iniciado correctamente.</p>
           </div>
           <div className="welcome-actions">
