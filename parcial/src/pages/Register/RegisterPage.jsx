@@ -115,7 +115,7 @@ function RegisterPage() {
       setErrors({});
       navigate("/login");
     } catch (err) {
-      setError(err.message || "Error al registrar el usuario");
+      setError(err.message);
       console.error("Error en registro:", err);
     } finally {
       setLoading(false);
