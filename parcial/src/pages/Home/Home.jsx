@@ -1,33 +1,22 @@
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { useState, useEffect } from "react";
-import { collection, query, onSnapshot, orderBy, where, getDoc, doc, getDocs, updateDoc, setDoc } from "firebase/firestore";
-import { db, auth } from "../../firebase/firebaseConfig";
+import { useState, useEffect, useRef } from "react";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db } from "../../firebase/firebaseConfig";
+import SessionHistory from "../../components/SessionHistory/SessionHistory";
 import "./Home.css";
 
 function Home() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
-  const [historyData, setHistoryData] = useState([]);
   const [userData, setUserData] = useState(null);
-  
-  // Estados para búsqueda
-  const [searchEmail, setSearchEmail] = useState("");
-  const [targetUserId, setTargetUserId] = useState(null);
-  const [isSearching, setIsSearching] = useState(false);
-  const [searchError, setSearchError] = useState("");
-  
-  // Estado para la subida de imagen
   const [isUploading, setIsUploading] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [activeView, setActiveView] = useState("historial");
+  const menuRef = useRef(null);
 
-  // Establecer el usuario actual como objetivo inicial
-  useEffect(() => {
-    if (user && !targetUserId) {
-      setTargetUserId(user.uid);
-    }
-  }, [user]);
-
-  // Obtener datos del usuario de Firestore
+  // Get user data from Firestore
   useEffect(() => {
     if (!user) return;
 
@@ -37,90 +26,28 @@ function Home() {
       if (userDocSnap.exists()) {
         const data = userDocSnap.data();
         setUserData(data);
-        // Guardar en localStorage para persistencia
         localStorage.setItem(`userData_${user.uid}`, JSON.stringify(data));
       }
     };
 
-    // Primero cargar desde localStorage si existe
     const savedUserData = localStorage.getItem(`userData_${user.uid}`);
     if (savedUserData) {
       setUserData(JSON.parse(savedUserData));
     }
 
-    // Luego obtener datos frescos de Firebase
     getUserData();
   }, [user]);
 
+  // Close profile menu on outside click
   useEffect(() => {
-    if (!targetUserId) return;
-
-    // Query para obtener el historial del usuario objetivo (propio o buscado)
-    const q = query(
-      collection(db, "sessionHistory"),
-      where("userId", "==", targetUserId),
-      orderBy("startTime", "desc")
-    );
-
-    const unsubscribe = onSnapshot(q, (querySnapshot) => {
-      const sessions = [];
-      querySnapshot.forEach((doc) => {
-        sessions.push({ id: doc.id, ...doc.data() });
-      });
-      setHistoryData(sessions);
-      
-      // Solo guardar en localStorage si es nuestro propio historial
-      if (targetUserId === user?.uid) {
-        localStorage.setItem(`historial_${user.uid}`, JSON.stringify(sessions));
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setProfileMenuOpen(false);
       }
-    });
-
-    // Cargar datos guardados en localStorage solo para el usuario actual
-    if (targetUserId === user?.uid) {
-      const savedHistory = localStorage.getItem(`historial_${user.uid}`);
-      if (savedHistory) {
-        setHistoryData(JSON.parse(savedHistory));
-      }
-    }
-
-    return () => unsubscribe();
-  }, [targetUserId, user]);
-
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    setSearchError("");
-    
-    if (!searchEmail.trim()) {
-      setTargetUserId(user.uid);
-      setIsSearching(false);
-      return;
-    }
-
-    try {
-      const usersRef = collection(db, "users");
-      const q = query(usersRef, where("email", "==", searchEmail.trim()));
-      const querySnapshot = await getDocs(q);
-
-      if (querySnapshot.empty) {
-        setSearchError("Usuario no encontrado");
-        return;
-      }
-
-      const foundUser = querySnapshot.docs[0].data();
-      setTargetUserId(foundUser.uid);
-      setIsSearching(true);
-    } catch (error) {
-      console.error("Error en la búsqueda:", error);
-      setSearchError("Error al realizar la búsqueda");
-    }
-  };
-
-  const clearSearch = () => {
-    setSearchEmail("");
-    setTargetUserId(user.uid);
-    setIsSearching(false);
-    setSearchError("");
-  };
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const handleImageChange = async (e) => {
     const file = e.target.files[0];
@@ -129,16 +56,14 @@ function Home() {
     setIsUploading(true);
 
     try {
-      // 1. Leer el archivo como Data URL (Base64)
       const reader = new FileReader();
       reader.readAsDataURL(file);
-      
+
       reader.onload = async (event) => {
         const img = new Image();
         img.src = event.target.result;
-        
+
         img.onload = async () => {
-          // 2. Comprimir la imagen usando Canvas (Firestore tiene límite de 1MB por documento)
           const canvas = document.createElement("canvas");
           const MAX_WIDTH = 300;
           const MAX_HEIGHT = 300;
@@ -162,38 +87,29 @@ function Home() {
           const ctx = canvas.getContext("2d");
           ctx.drawImage(img, 0, 0, width, height);
 
-          // Obtener el string en formato Base64 comprimido (formato JPEG, calidad 70%)
           const base64Image = canvas.toDataURL("image/jpeg", 0.7);
 
           try {
-            // NOTA: No podemos usar updateProfile de Auth con Base64 porque tiene un límite de caracteres estricto.
-            // Por lo tanto, solo la guardamos en Firestore, que es donde realmente la necesitamos.
-            
-            // Guardar en Firestore
             const userDocRef = doc(db, "users", user.uid);
             await setDoc(userDocRef, { photoURL: base64Image }, { merge: true });
 
-            // Actualizar estado y caché
             const updatedData = { ...userData, photoURL: base64Image };
             setUserData(updatedData);
             localStorage.setItem(`userData_${user.uid}`, JSON.stringify(updatedData));
-            
-            alert("¡Foto de perfil actualizada con éxito!");
           } catch (error) {
             console.error("Error guardando imagen en base de datos:", error);
             alert("Error al guardar la imagen: " + error.message);
           } finally {
             setIsUploading(false);
-            e.target.value = null; // Limpiar input
+            e.target.value = null;
           }
         };
       };
-      
+
       reader.onerror = (error) => {
         console.error("Error leyendo el archivo:", error);
         setIsUploading(false);
       };
-      
     } catch (error) {
       console.error("Error en proceso de imagen:", error);
       setIsUploading(false);
@@ -202,7 +118,6 @@ function Home() {
 
   const handleLogout = async () => {
     try {
-      // Limpiar localStorage al cerrar sesión
       if (user) {
         localStorage.removeItem(`historial_${user.uid}`);
         localStorage.removeItem(`userData_${user.uid}`);
@@ -214,123 +129,193 @@ function Home() {
     }
   };
 
-  const formatDate = (timestamp) => {
-    if (!timestamp) return "Sesión activa";
-    return new Date(timestamp.seconds * 1000).toLocaleString("es-CO", {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-  };
+  const displayName = user?.displayName || (userData ? `${userData.nombre || ""} ${userData.apellidos || ""}`.trim() : "");
+  const userEmail = user?.email || userData?.email || "";
+  const userInitial = userData?.nombre?.charAt(0) || user?.email?.charAt(0) || "U";
+  const photoURL = userData?.photoURL || user?.photoURL;
 
   return (
-    <div className="home-container">
-      <div className="home-wrapper">
-        {/* Panel Izquierdo - Bienvenida */}
-        <div className="panel-welcome">
-          <div className="welcome-header">
-            <div 
-              className={`profile-photo-container ${isUploading ? 'uploading' : ''}`} 
-              onClick={() => !isUploading && document.getElementById('fileInput').click()}
-              title={isUploading ? "Subiendo..." : "Click para cambiar foto"}
-            >
-              {isUploading ? (
-                <div className="profile-placeholder uploading-placeholder">
-                  <span className="spinner">⏳</span>
-                </div>
-              ) : userData?.photoURL || user?.photoURL ? (
-                <img src={userData?.photoURL || user?.photoURL} alt="Perfil" className="profile-photo" />
-              ) : (
-                <div className="profile-placeholder">
-                  {userData?.nombre?.charAt(0) || user?.email?.charAt(0) || "U"}
-                </div>
-              )}
-              <input 
-                type="file" 
-                id="fileInput" 
-                style={{ display: 'none' }} 
-                accept="image/*" 
-                onChange={handleImageChange} 
-              />
-            </div>
-            <h3>¡Bienvenido!</h3>
-            {(userData || user?.displayName) && (
-              <h2 className="user-name-display">
-                {user?.displayName || (userData ? `${userData.nombre || ""} ${userData.apellidos || ""}`.trim() : "")}
-              </h2>
-            )}
-            <p>Tu sesión ha iniciado correctamente.</p>
+    <div className="home-layout">
+      {/* ===== LEFT SIDEBAR ===== */}
+      <aside className={`home-sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
+        <div className="sidebar-brand">
+          <div 
+            className="brand-icon" 
+            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            style={{ cursor: "pointer" }}
+            title={sidebarCollapsed ? "Expandir" : ""}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+              <path d="M2 17l10 5 10-5"></path>
+              <path d="M2 12l10 5 10-5"></path>
+            </svg>
           </div>
-          <div className="welcome-actions">
-            <button onClick={handleLogout} className="btn-logout">
-              Cerrar Sesión
-            </button>
-          </div>
+          {!sidebarCollapsed && (
+            <>
+              <span className="brand-name">SessionApp</span>
+              <button 
+                className="sidebar-toggle" 
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)} 
+                title="Colapsar"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+              </button>
+            </>
+          )}
         </div>
 
-        {/* Panel Derecho - Historial */}
-        <div className="panel-history">
-          <div className="history-header-actions">
-            <h2>{isSearching ? `Sesiones de: ${searchEmail}` : "Mi Historial de Sesiones"}</h2>
-            
-            <form onSubmit={handleSearch} className="search-box">
-              <div className="input-group">
-                <input 
-                  type="email" 
-                  placeholder="Buscar por correo..." 
-                  value={searchEmail}
-                  onChange={(e) => setSearchEmail(e.target.value)}
-                  className="search-input"
-                />
-                <button type="submit" className="btn-search" title="Buscar usuario">
-                  <svg 
-                    width="18" 
-                    height="18" 
-                    viewBox="0 0 24 24" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    strokeWidth="2.5" 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round"
-                  >
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                  </svg>
-                </button>
-              </div>
-              {isSearching && (
-                <button type="button" onClick={clearSearch} className="btn-clear">
-                  Ver mis sesiones
-                </button>
+        {/* Sidebar Nav */}
+        <nav className="sidebar-nav">
+          <div className="nav-section-label">{!sidebarCollapsed && "MENÚ"}</div>
+          <a 
+            className={`nav-item ${activeView === "dashboard" ? "active" : ""}`} 
+            href="#" 
+            onClick={(e) => { e.preventDefault(); setActiveView("dashboard"); }}
+            title="Dashboard"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="7" height="7"></rect>
+              <rect x="14" y="3" width="7" height="7"></rect>
+              <rect x="14" y="14" width="7" height="7"></rect>
+              <rect x="3" y="14" width="7" height="7"></rect>
+            </svg>
+            {!sidebarCollapsed && <span>Dashboard</span>}
+          </a>
+          <a 
+            className={`nav-item ${activeView === "historial" ? "active" : ""}`} 
+            href="#" 
+            onClick={(e) => { e.preventDefault(); setActiveView("historial"); }}
+            title="Historial"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            {!sidebarCollapsed && <span>Historial</span>}
+          </a>
+        </nav>
+
+        {/* Sidebar User Card */}
+        {!sidebarCollapsed && (
+          <div className="sidebar-user-card">
+            <div className="sidebar-user-avatar">
+              {photoURL ? (
+                <img src={photoURL} alt="Perfil" />
+              ) : (
+                <span>{userInitial}</span>
               )}
-            </form>
+            </div>
+            <div className="sidebar-user-info">
+              <span className="sidebar-user-name">{displayName || "Usuario"}</span>
+              <span className="sidebar-user-role">Miembro</span>
+            </div>
           </div>
-          
-          {searchError && <p className="search-error-msg">{searchError}</p>}
-          <div className="history-list">
-            {historyData.length > 0 ? (
-              historyData.map((item) => (
-                <div key={item.id} className={`history-card ${item.status.toLowerCase()}`}>
-                  <div className="history-card-header">
-                    <span className="user-name">{`${item.nombre} ${item.apellidos}`}</span>
-                    <span className={`status-badge ${item.status.toLowerCase()}`}>
-                      {item.status}
-                    </span>
-                  </div>
-                  <div className="history-card-body">
-                    <p>
-                      <strong>Inicio:</strong> {formatDate(item.startTime)}
-                    </p>
-                    <p>
-                      <strong>Fin:</strong> {formatDate(item.endTime)}
-                    </p>
-                  </div>
+        )}
+      </aside>
+
+      {/* ===== MAIN CONTENT ===== */}
+      <div className="home-main">
+        {/* ===== TOP HEADER ===== */}
+        <header className="home-header">
+          <div className="header-left">
+            <h1 className="header-greeting">
+              ¡Bienvenido{displayName ? `, ${displayName.split(" ")[0]}` : ""}! 
+            </h1>
+            <p className="header-subtitle">Aquí puedes ver y gestionar tu historial de sesiones</p>
+          </div>
+
+          <div className="header-right">
+            {/* Profile Button */}
+            <div className="profile-dropdown" ref={menuRef}>
+              <button
+                className="profile-trigger"
+                onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+                id="profile-menu-trigger"
+              >
+                <div className={`header-avatar ${isUploading ? "uploading" : ""}`}>
+                  {isUploading ? (
+                    <div className="avatar-spinner"></div>
+                  ) : photoURL ? (
+                    <img src={photoURL} alt="Perfil" />
+                  ) : (
+                    <span>{userInitial}</span>
+                  )}
                 </div>
-              ))
-            ) : (
-              <p className="no-history">No hay sesiones registradas</p>
-            )}
+                <div className="profile-trigger-info">
+                  <span className="profile-trigger-name">{displayName || "Usuario"}</span>
+                  <span className="profile-trigger-email">{userEmail}</span>
+                </div>
+                <svg className={`profile-chevron ${profileMenuOpen ? "open" : ""}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </button>
+
+              {/* Dropdown Menu */}
+              {profileMenuOpen && (
+                <div className="profile-menu" id="profile-dropdown-menu">
+                  <div className="profile-menu-header">
+                    <div className="pm-avatar">
+                      {photoURL ? (
+                        <img src={photoURL} alt="Perfil" />
+                      ) : (
+                        <span>{userInitial}</span>
+                      )}
+                    </div>
+                    <div className="pm-info">
+                      <span className="pm-name">{displayName || "Usuario"}</span>
+                      <span className="pm-email">{userEmail}</span>
+                    </div>
+                  </div>
+
+                  <div className="profile-menu-divider"></div>
+
+                  <button className="profile-menu-item" onClick={() => { document.getElementById('fileInput').click(); setProfileMenuOpen(false); }} id="change-photo-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                      <circle cx="12" cy="13" r="4"></circle>
+                    </svg>
+                    Cambiar foto de perfil
+                  </button>
+
+                  <button className="profile-menu-item" id="settings-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="12" cy="12" r="3"></circle>
+                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                    Configuración
+                  </button>
+
+                  <div className="profile-menu-divider"></div>
+
+                  <button className="profile-menu-item logout" onClick={handleLogout} id="logout-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                      <polyline points="16 17 21 12 16 7"></polyline>
+                      <line x1="21" y1="12" x2="9" y2="12"></line>
+                    </svg>
+                    Cerrar Sesión
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <input
+              type="file"
+              id="fileInput"
+              style={{ display: 'none' }}
+              accept="image/*"
+              onChange={handleImageChange}
+            />
           </div>
-        </div>
+        </header>
+
+        {/* ===== CONTENT AREA ===== */}
+        <main className="home-content">
+          <SessionHistory />
+        </main>
       </div>
     </div>
   );
