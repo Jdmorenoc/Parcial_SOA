@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
-import "./ForgotPage.css";
+import "./ForgotPasswordPage.css";
 
-function ForgotPage() {
+function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -18,7 +18,7 @@ function ForgotPage() {
 
     try {
       await resetPassword(email);
-      setMessage("Se ha enviado un enlace de recuperación a tu correo electrónico. Revisa tu bandeja de entrada.");
+      setMessage("Se ha enviado un enlace de recuperación a tu correo electrónico.");
     } catch (err) {
       setError(err.message || "Error al enviar el correo de recuperación.");
     } finally {
@@ -27,25 +27,25 @@ function ForgotPage() {
   };
 
   return (
-    <div className="forgot-page">
-      <div className="forgot-container">
-        <div className="forgot-card">
-          <div className="forgot-header">
-            <div className="forgot-icon">
+    <div className="forgot-password-page">
+      <div className="forgot-password-container">
+        <div className="forgot-password-card">
+          <div className="forgot-password-header">
+            <div className="forgot-password-icon">
               <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
                 <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
               </svg>
             </div>
-            <h1 className="forgot-title">Recuperar Contraseña</h1>
-            <p className="forgot-subtitle">
-              Ingresa tu correo y te enviaremos un enlace oficial de Firebase para restablecer tu cuenta.
+            <h1 className="forgot-password-title">Recuperar Contraseña</h1>
+            <p className="forgot-password-subtitle">
+              Ingresa tu correo y te enviaremos un enlace para restablecer tu cuenta.
             </p>
           </div>
 
-          <form className="forgot-form" onSubmit={handleSubmit}>
-            {error && <div className="forgot-alert error">{error}</div>}
-            {message && <div className="forgot-alert success">{message}</div>}
+          <form className="forgot-password-form" onSubmit={handleSubmit}>
+            {error && <div className="forgot-password-alert error">{error}</div>}
+            {message && <div className="forgot-password-alert success">{message}</div>}
 
             <div className="form-group">
               <label htmlFor="email">Correo Electrónico</label>
@@ -65,14 +65,14 @@ function ForgotPage() {
               </div>
             </div>
 
-            <button type="submit" className="forgot-btn" disabled={loading}>
-              {loading ? "Enviando..." : "Enviar Enlace de Recuperación"}
+            <button type="submit" className="forgot-password-btn" disabled={loading}>
+              {loading ? "Enviando..." : "Enviar Enlace"}
             </button>
           </form>
 
-          <div className="forgot-footer">
+          <div className="forgot-password-footer">
             <span>¿Ya recordaste tu contraseña? </span>
-            <Link to="/login" className="login-link">Volver al login</Link>
+            <Link to="/login" className="login-link">Volver al inicio de sesión</Link>
           </div>
         </div>
       </div>
@@ -80,4 +80,4 @@ function ForgotPage() {
   );
 }
 
-export default ForgotPage;
+export default ForgotPasswordPage;

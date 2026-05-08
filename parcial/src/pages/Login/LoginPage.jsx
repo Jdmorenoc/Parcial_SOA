@@ -61,16 +61,8 @@ function LoginPage() {
       setFormData({ email: "", password: "" });
       navigate("/");
     } catch (err) {
-      // Mensajes de error más claros de Firebase
-      if (err.code === "auth/user-not-found") {
-        setError("Este correo no está registrado. Crea una cuenta primero");
-      } else if (err.code === "auth/wrong-password") {
-        setError("La contraseña es incorrecta");
-      } else if (err.code === "auth/invalid-email") {
-        setError("El correo electrónico no es válido");
-      } else {
-        setError(err.message || "Error al iniciar sesión");
-      }
+      // Usamos el mensaje traducido que viene del AuthContext
+      setError(err.message);
       console.error("Error en login:", err);
     } finally {
       setLoading(false);
@@ -85,7 +77,7 @@ function LoginPage() {
       await signInWithGoogle();
       navigate("/");
     } catch (err) {
-      setError("Error al iniciar sesión con Google: " + err.message);
+      setError(err.message);
       console.error("Error en Google sign-in:", err);
     } finally {
       setLoading(false);
@@ -100,7 +92,7 @@ function LoginPage() {
       await signInWithFacebook();
       navigate("/");
     } catch (err) {
-      setError("Error al iniciar sesión con Facebook: " + err.message);
+      setError(err.message);
       console.error("Error en Facebook sign-in:", err);
     } finally {
       setLoading(false);
@@ -108,19 +100,19 @@ function LoginPage() {
   };
 
   const handleGithubSignIn = async () => {
-  setError("");
-  setLoading(true);
+    setError("");
+    setLoading(true);
 
-  try {
-    await signInWithGithub();
-    navigate("/");
-  } catch (err) {
-    setError("Error al iniciar sesión con GitHub: " + err.message);
-    console.error("Error en GitHub sign-in:", err);
-  } finally {
-    setLoading(false);
-  }
-};
+    try {
+      await signInWithGithub();
+      navigate("/");
+    } catch (err) {
+      setError(err.message);
+      console.error("Error en GitHub sign-in:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="login-container">
@@ -181,6 +173,13 @@ function LoginPage() {
             {errors.password && (
               <span className="error-message">{errors.password}</span>
             )}
+          </div>
+
+          {/* Enlace de recuperación */}
+          <div className="login-options">
+            <Link to="/forgot" className="forgot-password-link">
+              ¿Olvidaste tu contraseña?
+            </Link>
           </div>
 
           {/* Botón de Envío */}
@@ -275,40 +274,40 @@ function LoginPage() {
           </button>
 
           <button
-  type="button"
-  onClick={handleGithubSignIn}
-  disabled={loading}
-  className="btn-github"
-  style={{
-    width: "60px",
-    height: "60px",
-    padding: "10px",
-    backgroundColor: "#24292e",
-    border: "none",
-    borderRadius: "12px",
-    cursor: loading ? "not-allowed" : "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    opacity: loading ? 0.7 : 1,
-    transition: "all 0.3s ease",
-    boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
-  }}
-  onMouseEnter={(e) =>
-    (e.currentTarget.style.boxShadow = "0 4px 12px rgba(36, 41, 46, 0.3)")
-  }
-  onMouseLeave={(e) =>
-    (e.currentTarget.style.boxShadow = "0 2px 4px rgba(0,0,0,0.1)")
-  }
-  title="Iniciar sesión con GitHub"
->
-  <svg width="32" height="32" viewBox="0 0 24 24">
-    <path
-      fill="#ffffff"
-      d="M12 0C5.37 0 0 5.37 0 12a12 12 0 0 0 8.21 11.39c.6.11.82-.26.82-.58v-2.02c-3.34.73-4.04-1.41-4.04-1.41-.55-1.39-1.34-1.76-1.34-1.76-1.09-.74.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49 1 .11-.78.42-1.3.76-1.6-2.67-.31-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.31-.54-1.56.12-3.25 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.67 1.69.25 2.94.13 3.25.77.84 1.23 1.91 1.23 3.22 0 4.61-2.8 5.61-5.48 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.21.7.83.58A12 12 0 0 0 24 12c0-6.63-5.37-12-12-12z"
-    />
-  </svg>
-</button>
+            type="button"
+            onClick={handleGithubSignIn}
+            disabled={loading}
+            className="btn-github"
+            style={{
+              width: "60px",
+              height: "60px",
+              padding: "10px",
+              backgroundColor: "#24292e",
+              border: "none",
+              borderRadius: "12px",
+              cursor: loading ? "not-allowed" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              opacity: loading ? 0.7 : 1,
+              transition: "all 0.3s ease",
+              boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+            }}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.boxShadow = "0 4px 12px rgba(36, 41, 46, 0.3)")
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.boxShadow = "0 2px 4px rgba(0,0,0,0.1)")
+            }
+            title="Iniciar sesión con GitHub"
+          >
+            <svg width="32" height="32" viewBox="0 0 24 24">
+              <path
+                fill="#ffffff"
+                d="M12 0C5.37 0 0 5.37 0 12a12 12 0 0 0 8.21 11.39c.6.11.82-.26.82-.58v-2.02c-3.34.73-4.04-1.41-4.04-1.41-.55-1.39-1.34-1.76-1.34-1.76-1.09-.74.08-.73.08-.73 1.2.08 1.84 1.24 1.84 1.24 1.07 1.83 2.8 1.3 3.49 1 .11-.78.42-1.3.76-1.6-2.67-.31-5.47-1.34-5.47-5.93 0-1.31.47-2.38 1.24-3.22-.12-.31-.54-1.56.12-3.25 0 0 1.01-.32 3.3 1.23a11.4 11.4 0 0 1 6 0c2.28-1.55 3.29-1.23 3.29-1.23.67 1.69.25 2.94.13 3.25.77.84 1.23 1.91 1.23 3.22 0 4.61-2.8 5.61-5.48 5.92.43.37.81 1.1.81 2.22v3.29c0 .32.21.7.83.58A12 12 0 0 0 24 12c0-6.63-5.37-12-12-12z"
+              />
+            </svg>
+          </button>
         </div>
 
         {/* Enlaces de Navegación */}
