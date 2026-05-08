@@ -1,5 +1,5 @@
 import { Navigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../../context/AuthContext";
 import "./ProtectedRoutes.css";
 
 export function ProtectedRoutes({ children }) {
@@ -20,5 +20,6 @@ export function ProtectedRoutes({ children }) {
     return <Navigate to="/login" replace />;
   }
 
+  
   return children;
 }
