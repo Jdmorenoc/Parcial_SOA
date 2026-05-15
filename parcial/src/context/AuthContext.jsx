@@ -40,9 +40,15 @@ export function AuthProvider({ children }) {
     const userDoc = await getDoc(doc(db, "users", user.uid));
     const userData = userDoc.data() || {};
     const displayNameParts = (user.displayName || "").split(" ");
+
+    // Obtener email: user.email puede ser null en FB/GitHub,
+    // así que buscamos también en providerData
+    const providerEmail = user.providerData?.find((p) => p.email)?.email || "";
+    const email = user.email || userData.email || providerEmail;
+
     await addDoc(collection(db, "sessionHistory"), {
       userId: user.uid,
-      email: user.email || userData.email || "",
+      email: email,
       nombre: userData.nombre || displayNameParts[0] || "",
       apellidos: userData.apellidos || displayNameParts[1] || "",
       provider: provider,
@@ -75,37 +81,12 @@ export function AuthProvider({ children }) {
     await Promise.all(updatePromises);
   };
 
-  // Helper: check if an email already exists in Firestore and which provider it was registered with
-  const checkEmailExists = async (email) => {
-    const usersRef = collection(db, "users");
-    const q = query(usersRef, where("email", "==", email.toLowerCase()));
-    const querySnapshot = await getDocs(q);
-    
-    if (!querySnapshot.empty) {
-      const existingUser = querySnapshot.docs[0].data();
-      let registeredWith = "correo y contraseña";
-      if (existingUser.registroConGoogle) registeredWith = "Google";
-      else if (existingUser.registroConFacebook) registeredWith = "Facebook";
-      else if (existingUser.registroConGithub) registeredWith = "GitHub";
-      
-      return { exists: true, registeredWith, uid: existingUser.uid };
-    }
-    return { exists: false };
-  };
-
   const signup = async (email, password, userData) => {
     try {
-      // 1. Verificar si el correo ya está registrado en Firestore (nuestra base de datos)
-      const emailCheck = await checkEmailExists(email);
-      if (emailCheck.exists) {
-        throw new Error(`Este correo ya está registrado con ${emailCheck.registeredWith}. Por favor inicia sesión con ese método.`);
-      }
-
-      // 2. Intentar crear el usuario en Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
       
-      // 3. Guardar datos adicionales en Firestore
+      // Guardar datos adicionales en Firestore
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
         email: email,
@@ -124,7 +105,6 @@ export function AuthProvider({ children }) {
       } else if (error.code === "auth/invalid-credential") {
         throw new Error("Las credenciales son inválidas o han expirado.");
       }
-      // Si ya es un Error con nuestro mensaje personalizado, lo volvemos a lanzar
       throw error;
     }
   };
@@ -159,36 +139,26 @@ export function AuthProvider({ children }) {
       const user = userCredential.user;
       const displayNameParts = (user.displayName || "").split(" ");
 
-      // Verificar si el correo ya existe con otro proveedor
       const userDocRef = doc(db, "users", user.uid);
       const userDocSnap = await getDoc(userDocRef);
 
       if (!userDocSnap.exists()) {
-        // Verificar si el email ya está registrado con otro método (evitar duplicados por email)
-        if (user.email) {
-          const emailCheck = await checkEmailExists(user.email);
-          if (emailCheck.exists && emailCheck.uid !== user.uid) {
-            await signOut(auth);
-            throw new Error(`El correo ${user.email} ya está registrado con ${emailCheck.registeredWith}. Por favor usa ese método para entrar.`);
-          }
-        }
-
         await setDoc(userDocRef, {
           uid: user.uid,
           email: user.email,
           nombre: displayNameParts[0] || "",
-          apellidos: displayNameParts[1] || "",
+          apellidos: displayNameParts.slice(1).join(" ") || "",
           photoURL: user.photoURL || "",
           createdAt: new Date(),
           registroConGoogle: true,
         });
+      } else if (!userDocSnap.data().email && user.email) {
+        await setDoc(userDocRef, { email: user.email }, { merge: true });
       }
       await logSessionStart(user, "google");
       return user;
     } catch (error) {
-      if (error.code === "auth/account-exists-with-different-credential") {
-        throw new Error("Ya existe una cuenta con este correo pero usando otro método de acceso.");
-      } else if (error.code === "auth/popup-closed-by-user") {
+      if (error.code === "auth/popup-closed-by-user") {
         throw new Error("La ventana de autenticación fue cerrada antes de completar el proceso.");
       } else if (error.code === "auth/invalid-credential") {
         throw new Error("Error en las credenciales de Google. Por favor, intenta de nuevo.");
@@ -217,32 +187,34 @@ export function AuthProvider({ children }) {
       const userDocSnap = await getDoc(userDocRef);
 
       if (!userDocSnap.exists()) {
-        if (authUser.email) {
-          const emailCheck = await checkEmailExists(authUser.email);
-          if (emailCheck.exists && emailCheck.uid !== authUser.uid) {
-            await signOut(auth);
-            throw new Error(`El correo ${authUser.email} ya está registrado con ${emailCheck.registeredWith}. Por favor usa ese método para entrar.`);
-          }
-        }
-      }
-
-      if (!userDocSnap.exists() || !userDocSnap.data().photoURL || userDocSnap.data().photoURL.includes("facebook.com")) {
+        const providerEmail = authUser.providerData?.find((p) => p.email)?.email || "";
         await setDoc(userDocRef, {
           uid: authUser.uid,
-          email: authUser.email || "",
+          email: authUser.email || providerEmail || "",
           nombre: displayNameParts[0] || "",
           apellidos: displayNameParts.slice(1).join(" ") || "",
           photoURL: fbPhotoURL,
-          createdAt: userDocSnap.exists() ? userDocSnap.data().createdAt : new Date(),
+          createdAt: new Date(),
           registroConFacebook: true,
-        }, { merge: true });
+        });
+      } else {
+        const providerEmail = authUser.providerData?.find((p) => p.email)?.email || "";
+        const updates = {};
+        if (!userDocSnap.data().email && (authUser.email || providerEmail)) {
+          updates.email = authUser.email || providerEmail;
+        }
+        if (!userDocSnap.data().photoURL || userDocSnap.data().photoURL.includes("facebook.com")) {
+          updates.photoURL = fbPhotoURL;
+        }
+        if (Object.keys(updates).length > 0) {
+          await setDoc(userDocRef, updates, { merge: true });
+        }
       }
+
       await logSessionStart(authUser, "facebook");
       return authUser;
     } catch (error) {
-      if (error.code === "auth/account-exists-with-different-credential") {
-        throw new Error("Ya existe una cuenta con este correo usando otro método (Google o Email).");
-      } else if (error.code === "auth/popup-closed-by-user") {
+      if (error.code === "auth/popup-closed-by-user") {
         throw new Error("Se cerró la ventana de Facebook.");
       } else if (error.code === "auth/invalid-credential") {
         throw new Error("Error en las credenciales de Facebook.");
@@ -261,30 +233,26 @@ export function AuthProvider({ children }) {
       const userDocSnap = await getDoc(userDocRef);
 
       if (!userDocSnap.exists()) {
-        if (authUser.email) {
-          const emailCheck = await checkEmailExists(authUser.email);
-          if (emailCheck.exists && emailCheck.uid !== authUser.uid) {
-            await signOut(auth);
-            throw new Error(`El correo ${authUser.email} ya está registrado con ${emailCheck.registeredWith}. Por favor usa ese método para entrar.`);
-          }
-        }
-
+        const providerEmail = authUser.providerData?.find((p) => p.email)?.email || "";
         await setDoc(userDocRef, {
           uid: authUser.uid,
-          email: authUser.email || "",
+          email: authUser.email || providerEmail || "",
           nombre: displayNameParts[0] || "",
           apellidos: displayNameParts.slice(1).join(" ") || "",
           photoURL: authUser.photoURL || "",
           createdAt: new Date(),
           registroConGithub: true,
         });
+      } else if (!userDocSnap.data().email) {
+        const providerEmail = authUser.providerData?.find((p) => p.email)?.email || "";
+        if (authUser.email || providerEmail) {
+          await setDoc(userDocRef, { email: authUser.email || providerEmail }, { merge: true });
+        }
       }
       await logSessionStart(authUser, "github");
       return authUser;
     } catch (error) {
-      if (error.code === "auth/account-exists-with-different-credential") {
-        throw new Error("Ya existe una cuenta con este correo usando otro proveedor.");
-      } else if (error.code === "auth/popup-closed-by-user") {
+      if (error.code === "auth/popup-closed-by-user") {
         throw new Error("Se cerró la ventana de GitHub.");
       } else if (error.code === "auth/invalid-credential") {
         throw new Error("Error en las credenciales de GitHub.");
@@ -359,8 +327,7 @@ export function AuthProvider({ children }) {
         signInWithGoogle,
         signInWithFacebook,
         signInWithGithub,
-        checkEmailExists,
-        resetPassword
+        resetPassword,
       }}
     >
       {children}

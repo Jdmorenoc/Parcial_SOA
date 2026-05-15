@@ -20,6 +20,7 @@ export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: "select_account" });
 
 export const facebookProvider = new FacebookAuthProvider();
+facebookProvider.addScope("email");
 facebookProvider.setCustomParameters({ display: "popup" });
 
 export const githubProvider = new GithubAuthProvider();
