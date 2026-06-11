@@ -12,12 +12,19 @@ const initialForm = {
 };
 
 function RegisterPage() {
+  const { signup, user, loading: authLoading } = useAuth();
   const [formData, setFormData] = useState(initialForm);
   const [errors, setErrors] = useState({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { signup } = useAuth();
+
+  // Redirigir al inicio si ya está autenticado
+  useEffect(() => {
+    if (user && !authLoading) {
+      navigate("/");
+    }
+  }, [user, authLoading, navigate]);
 
   const validateEmail = (email) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);

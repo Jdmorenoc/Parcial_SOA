@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
 import './ResetPage.css';
 
 export default function ResetPage() {
+  const { user, loading: authLoading } = useAuth();
   const [formData, setFormData] = useState({
     password: '',
     confirmPassword: ''
@@ -13,6 +15,13 @@ export default function ResetPage() {
   const [emailRecuperacion, setEmailRecuperacion] = useState('');
   const [mensajeError, setMensajeError] = useState('');
   const navigate = useNavigate();
+
+  // Redirigir al inicio si ya está autenticado
+  useEffect(() => {
+    if (user && !authLoading) {
+      navigate("/");
+    }
+  }, [user, authLoading, navigate]);
 
   // Obtener email del localStorage al montar el componente
   useEffect(() => {
