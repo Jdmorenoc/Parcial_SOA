@@ -1,7 +1,7 @@
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useState, useEffect, useRef } from "react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../../firebase/firebaseConfig";
 import SessionHistory from "../../components/SessionHistory/SessionHistory";
 import Clientes from "../../components/Clientes/Clientes";
@@ -14,8 +14,42 @@ function Home() {
   const [isUploading, setIsUploading] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [activeView, setActiveView] = useState("historial");
+  const [activeView, setActiveView] = useState("dashboard");
   const menuRef = useRef(null);
+  const [stats, setStats] = useState({ sessionsCount: 0, clientsCount: 0, loading: true });
+
+  // Consultar estadísticas dinámicamente para el Dashboard
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchStats = async () => {
+      try {
+        // Consultar total de sesiones
+        const sessionsQuery = query(collection(db, "sessionHistory"));
+        const sessionsSnap = await getDocs(sessionsQuery);
+        const sessionsCount = sessionsSnap.size;
+
+        // Consultar clientes creados por este usuario
+        const clientsQuery = query(
+          collection(db, "clientes"),
+          where("creadoPor", "==", user.uid)
+        );
+        const clientsSnap = await getDocs(clientsQuery);
+        const clientsCount = clientsSnap.size;
+
+        setStats({
+          sessionsCount,
+          clientsCount,
+          loading: false,
+        });
+      } catch (error) {
+        console.error("Error al obtener estadísticas del dashboard:", error);
+        setStats((prev) => ({ ...prev, loading: false }));
+      }
+    };
+
+    fetchStats();
+  }, [user, activeView]);
 
   // Get user data from Firestore
   useEffect(() => {
@@ -102,11 +136,9 @@ function Home() {
             alert("Error al guardar la imagen: " + error.message);
           } finally {
             setIsUploading(false);
-            e.target.value = null;
           }
         };
       };
-
       reader.onerror = (error) => {
         console.error("Error leyendo el archivo:", error);
         setIsUploading(false);
@@ -137,124 +169,12 @@ function Home() {
 
   return (
     <div className="home-layout">
-      {/* ===== LEFT SIDEBAR ===== */}
-      <aside className={`home-sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
-        <div className="sidebar-brand">
-          <div 
-            className="brand-icon" 
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            style={{ cursor: "pointer" }}
-            title={sidebarCollapsed ? "Expandir" : ""}
-          >
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
-              <path d="M2 17l10 5 10-5"></path>
-              <path d="M2 12l10 5 10-5"></path>
-            </svg>
-          </div>
-          {!sidebarCollapsed && (
-            <>
-              <span className="brand-name">SessionApp</span>
-              <button 
-                className="sidebar-toggle" 
-                onClick={() => setSidebarCollapsed(!sidebarCollapsed)} 
-                title="Colapsar"
-              >
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="15 18 9 12 15 6"></polyline>
-                </svg>
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* Sidebar Nav */}
-        <nav className="sidebar-nav">
-          <div className="nav-section-label">{!sidebarCollapsed && "MENÚ"}</div>
-          <a 
-            className={`nav-item ${activeView === "dashboard" ? "active" : ""}`} 
-            href="#" 
-            onClick={(e) => { e.preventDefault(); setActiveView("dashboard"); }}
-            title="Dashboard"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="7" height="7"></rect>
-              <rect x="14" y="3" width="7" height="7"></rect>
-              <rect x="14" y="14" width="7" height="7"></rect>
-              <rect x="3" y="14" width="7" height="7"></rect>
-            </svg>
-            {!sidebarCollapsed && <span>Dashboard</span>}
-          </a>
-          <a 
-            className={`nav-item ${activeView === "historial" ? "active" : ""}`} 
-            href="#" 
-            onClick={(e) => { e.preventDefault(); setActiveView("historial"); }}
-            title="Historial"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"></circle>
-              <polyline points="12 6 12 12 16 14"></polyline>
-            </svg>
-            {!sidebarCollapsed && <span>Historial</span>}
-          </a>
-          <a 
-            className={`nav-item ${activeView === "clientes" ? "active" : ""}`} 
-            href="#" 
-            onClick={(e) => { e.preventDefault(); setActiveView("clientes"); }}
-            title="Clientes"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-              <circle cx="9" cy="7" r="4"></circle>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-            </svg>
-            {!sidebarCollapsed && <span>Clientes</span>}
-          </a>
-        </nav>
-
-        {/* Sidebar User Card */}
-        {!sidebarCollapsed && (
-          <div className="sidebar-user-card">
-            <div className="sidebar-user-avatar">
-              {photoURL ? (
-                <img src={photoURL} alt="Perfil" />
-              ) : (
-                <span>{userInitial}</span>
-              )}
-            </div>
-            <div className="sidebar-user-info">
-              <span className="sidebar-user-name">{displayName || "Usuario"}</span>
-              <span className="sidebar-user-role">Miembro</span>
-            </div>
-          </div>
-        )}
-      </aside>
-
-      {/* ===== MAIN CONTENT ===== */}
-      <div className="home-main">
-        {/* ===== TOP HEADER ===== */}
-        <header className="home-header">
-          <div className="header-left">
-            <h1 className="header-greeting">
-              ¡Bienvenido{displayName ? `, ${displayName.split(" ")[0]}` : ""}! 
-            </h1>
-            <p className="header-subtitle">
-              {activeView === "historial" && "Aquí puedes ver y gestionar tu historial de sesiones"}
-              {activeView === "clientes" && "Aquí puedes ver y estructurar la información de tus clientes"}
-              {activeView === "dashboard" && "Resumen analítico y estadísticas de la aplicación"}
-            </p>
-          </div>
-
-          <div className="header-right">
-            {/* Profile Button */}
-            <div className="profile-dropdown" ref={menuRef}>
-              <button
-                className="profile-trigger"
-                onClick={() => setProfileMenuOpen(!profileMenuOpen)}
-                id="profile-menu-trigger"
-              >
-                <div className={`header-avatar ${isUploading ? "uploading" : ""}`}>
+      {activeView === "dashboard" ? (
+        <div className="fullscreen-portal">
+          <div className="portal-container">
+            <div className="portal-profile-header">
+              <div className="portal-avatar-container">
+                <div className={`portal-avatar ${isUploading ? "uploading" : ""}`}>
                   {isUploading ? (
                     <div className="avatar-spinner"></div>
                   ) : photoURL ? (
@@ -263,86 +183,400 @@ function Home() {
                     <span>{userInitial}</span>
                   )}
                 </div>
-                <div className="profile-trigger-info">
-                  <span className="profile-trigger-name">{displayName || "Usuario"}</span>
-                  <span className="profile-trigger-email">{userEmail}</span>
-                </div>
-                <svg className={`profile-chevron ${profileMenuOpen ? "open" : ""}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <polyline points="6 9 12 15 18 9"></polyline>
+                <button 
+                  className="portal-change-photo-badge" 
+                  onClick={() => document.getElementById('fileInput').click()} 
+                  title="Cambiar foto de perfil"
+                  disabled={isUploading}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                    <circle cx="12" cy="13" r="4"></circle>
+                  </svg>
+                </button>
+              </div>
+
+              <div className="portal-user-details">
+                <h1 className="portal-greeting">¡Bienvenido, {displayName || "Usuario"}!</h1>
+                <p className="portal-email">{userEmail}</p>
+                <span className="portal-provider-badge">
+                  Conectado con {user?.providerData?.[0]?.providerId === "google.com" ? "Google" :
+                                 user?.providerData?.[0]?.providerId === "facebook.com" ? "Facebook" :
+                                 user?.providerData?.[0]?.providerId === "github.com" ? "GitHub" : "Email y Contraseña"}
+                </span>
+              </div>
+            </div>
+
+            {/* Central Action Button */}
+            <div className="portal-action-container">
+              <button className="btn-portal-enter" onClick={() => setActiveView("historial")}>
+                Ir a Dashboard
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                  <polyline points="12 5 19 12 12 19"></polyline>
                 </svg>
               </button>
+              <button className="btn-portal-logout" onClick={handleLogout}>
+                Cerrar Sesión
+              </button>
+            </div>
+          </div>
 
-              {/* Dropdown Menu */}
-              {profileMenuOpen && (
-                <div className="profile-menu" id="profile-dropdown-menu">
-                  <div className="profile-menu-header">
-                    <div className="pm-avatar">
-                      {photoURL ? (
+          <input
+            type="file"
+            id="fileInput"
+            style={{ display: 'none' }}
+            accept="image/*"
+            onChange={handleImageChange}
+          />
+        </div>
+      ) : (
+        /* ===== SUB-PAGES SIDEBAR LAYOUT ===== */
+        <>
+          {/* ===== LEFT SIDEBAR ===== */}
+          <aside className={`home-sidebar ${sidebarCollapsed ? "collapsed" : ""}`}>
+            <div className="sidebar-brand">
+              <div 
+                className="brand-icon" 
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                style={{ cursor: "pointer" }}
+                title={sidebarCollapsed ? "Expandir" : ""}
+              >
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 2L2 7l10 5 10-5-10-5z"></path>
+                  <path d="M2 17l10 5 10-5"></path>
+                  <path d="M2 12l10 5 10-5"></path>
+                </svg>
+              </div>
+              {!sidebarCollapsed && (
+                <>
+                  <span className="brand-name">SessionApp</span>
+                  <button 
+                    className="sidebar-toggle" 
+                    onClick={() => setSidebarCollapsed(!sidebarCollapsed)} 
+                    title="Colapsar"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Sidebar Nav */}
+            <nav className="sidebar-nav">
+              <div className="nav-section-label">{!sidebarCollapsed && "MENÚ"}</div>
+              <a 
+                className={`nav-item ${activeView === "dashboard" ? "active" : ""}`} 
+                href="#" 
+                onClick={(e) => { e.preventDefault(); setActiveView("dashboard"); }}
+                title="Dashboard"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="14" width="7" height="7"></rect>
+                  <rect x="3" y="14" width="7" height="7"></rect>
+                </svg>
+                {!sidebarCollapsed && <span>Dashboard / Inicio</span>}
+              </a>
+              <a 
+                className={`nav-item ${activeView === "historial" ? "active" : ""}`} 
+                href="#" 
+                onClick={(e) => { e.preventDefault(); setActiveView("historial"); }}
+                title="Historial"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                {!sidebarCollapsed && <span>Historial</span>}
+              </a>
+              <a 
+                className={`nav-item ${activeView === "clientes" ? "active" : ""}`} 
+                href="#" 
+                onClick={(e) => { e.preventDefault(); setActiveView("clientes"); }}
+                title="Clientes"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="9" cy="7" r="4"></circle>
+                  <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                </svg>
+                {!sidebarCollapsed && <span>Clientes</span>}
+              </a>
+              <a 
+                className={`nav-item ${activeView === "perfil" ? "active" : ""}`} 
+                href="#" 
+                onClick={(e) => { e.preventDefault(); setActiveView("perfil"); }}
+                title="Mi Perfil"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                  <circle cx="12" cy="7" r="4"></circle>
+                </svg>
+                {!sidebarCollapsed && <span>Mi Perfil</span>}
+              </a>
+              <a 
+                className="nav-item sidebar-logout-btn" 
+                href="#" 
+                onClick={(e) => { e.preventDefault(); handleLogout(); }}
+                title="Cerrar Sesión"
+                style={{ marginTop: "auto", color: "#ff7675" }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                  <polyline points="16 17 21 12 16 7"></polyline>
+                  <line x1="21" y1="12" x2="9" y2="12"></line>
+                </svg>
+                {!sidebarCollapsed && <span>Cerrar Sesión</span>}
+              </a>
+            </nav>
+
+            {/* Sidebar User Card */}
+            {!sidebarCollapsed && (
+              <div className="sidebar-user-card">
+                <div className="sidebar-user-avatar">
+                  {photoURL ? (
+                    <img src={photoURL} alt="Perfil" />
+                  ) : (
+                    <span>{userInitial}</span>
+                  )}
+                </div>
+                <div className="sidebar-user-info">
+                  <span className="sidebar-user-name">{displayName || "Usuario"}</span>
+                  <span className="sidebar-user-role">Miembro</span>
+                </div>
+              </div>
+            )}
+          </aside>
+
+          {/* ===== MAIN CONTENT AREA ===== */}
+          <div className="home-main">
+            {/* ===== TOP HEADER ===== */}
+            <header className="home-header">
+              <div className="header-left" style={{ display: "flex", flexDirection: "row", alignItems: "center", gap: "20px" }}>
+                <button 
+                  className="btn-back-dashboard-header" 
+                  onClick={() => setActiveView("dashboard")}
+                  title="Volver al Dashboard de Bienvenida"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="19" y1="12" x2="5" y2="12"></line>
+                    <polyline points="12 19 5 12 12 5"></polyline>
+                  </svg>
+                  Volver al Inicio
+                </button>
+                <div style={{ display: "flex", flexDirection: "column" }}>
+                  <h1 className="header-greeting" style={{ fontSize: "1.1rem" }}>
+                    ¡Bienvenido{displayName ? `, ${displayName.split(" ")[0]}` : ""}! 👤
+                  </h1>
+                  <p className="header-subtitle">
+                    {activeView === "historial" && "Aquí puedes ver y gestionar tu historial de sesiones"}
+                    {activeView === "clientes" && "Aquí puedes ver y estructurar la información de tus clientes"}
+                    {activeView === "perfil" && "Gestión de información personal e imagen"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="header-right">
+                {/* Profile Button */}
+                <div className="profile-dropdown" ref={menuRef}>
+                  <button
+                    className="profile-trigger"
+                    onClick={() => setProfileMenuOpen(!profileMenuOpen)}
+                    id="profile-menu-trigger"
+                  >
+                    <div className={`header-avatar ${isUploading ? "uploading" : ""}`}>
+                      {isUploading ? (
+                        <div className="avatar-spinner"></div>
+                      ) : photoURL ? (
                         <img src={photoURL} alt="Perfil" />
                       ) : (
                         <span>{userInitial}</span>
                       )}
                     </div>
-                    <div className="pm-info">
-                      <span className="pm-name">{displayName || "Usuario"}</span>
-                      <span className="pm-email">{userEmail}</span>
+                    <div className="profile-trigger-info">
+                      <span className="profile-trigger-name">{displayName || "Usuario"}</span>
+                      <span className="profile-trigger-email">{userEmail}</span>
                     </div>
+                    <svg className={`profile-chevron ${profileMenuOpen ? "open" : ""}`} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9"></polyline>
+                    </svg>
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {profileMenuOpen && (
+                    <div className="profile-menu" id="profile-dropdown-menu">
+                      <div className="profile-menu-header">
+                        <div className="pm-avatar">
+                          {photoURL ? (
+                            <img src={photoURL} alt="Perfil" />
+                          ) : (
+                            <span>{userInitial}</span>
+                          )}
+                        </div>
+                        <div className="pm-info">
+                          <span className="pm-name">{displayName || "Usuario"}</span>
+                          <span className="pm-email">{userEmail}</span>
+                        </div>
+                      </div>
+
+                      <div className="profile-menu-divider"></div>
+
+                      <button className="profile-menu-item" onClick={() => { setActiveView("perfil"); setProfileMenuOpen(false); }} id="view-profile-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                          <circle cx="12" cy="7" r="4"></circle>
+                        </svg>
+                        Ver mi Perfil
+                      </button>
+
+                      <button className="profile-menu-item" onClick={() => { document.getElementById('fileInput').click(); setProfileMenuOpen(false); }} id="change-photo-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                          <circle cx="12" cy="13" r="4"></circle>
+                        </svg>
+                        Cambiar foto de perfil
+                      </button>
+
+                      <div className="profile-menu-divider"></div>
+
+                      <button className="profile-menu-item logout" onClick={handleLogout} id="logout-btn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                          <polyline points="16 17 21 12 16 7"></polyline>
+                          <line x1="21" y1="12" x2="9" y2="12"></line>
+                        </svg>
+                        Cerrar Sesión
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <input
+                  type="file"
+                  id="fileInput"
+                  style={{ display: 'none' }}
+                  accept="image/*"
+                  onChange={handleImageChange}
+                />
+              </div>
+            </header>
+
+            {/* ===== CONTENT AREA ===== */}
+            <main className="home-content">
+              {activeView === "historial" && <SessionHistory />}
+              {activeView === "clientes" && <Clientes />}
+              
+              {activeView === "perfil" && (
+                <div className="profile-view-container">
+                  <div className="profile-view-header">
+                    <button className="btn-back-dashboard" onClick={() => setActiveView("dashboard")}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="19" y1="12" x2="5" y2="12"></line>
+                        <polyline points="12 19 5 12 12 5"></polyline>
+                      </svg>
+                      Volver al Dashboard
+                    </button>
+                    <h2>Perfil del Usuario</h2>
+                    <p>Información detallada de la cuenta y opciones de seguridad.</p>
                   </div>
 
-                  <div className="profile-menu-divider"></div>
+                  <div className="profile-view-grid">
+                    {/* Tarjeta Izquierda: Foto y Nombre */}
+                    <div className="profile-left-card">
+                      <div className="profile-photo-section">
+                        <div className={`profile-photo-wrapper ${isUploading ? "uploading" : ""}`}>
+                          {isUploading ? (
+                            <div className="avatar-spinner large"></div>
+                          ) : photoURL ? (
+                            <img src={photoURL} alt="Foto de Perfil" />
+                          ) : (
+                            <span>{userInitial}</span>
+                          )}
+                        </div>
+                        <button 
+                          className="btn-upload-photo" 
+                          onClick={() => document.getElementById('fileInput').click()}
+                          disabled={isUploading}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                          </svg>
+                          {photoURL ? "Actualizar Foto" : "Subir Foto"}
+                        </button>
+                        <p className="photo-instructions">Soporta formatos JPG, PNG. Máx 300x300 px (se redimensiona localmente).</p>
+                      </div>
+                      
+                      <div className="profile-name-section">
+                        <h3>{displayName || "Usuario de SessionApp"}</h3>
+                        <span className="profile-role-badge">Administrador</span>
+                      </div>
+                    </div>
 
-                  <button className="profile-menu-item" onClick={() => { document.getElementById('fileInput').click(); setProfileMenuOpen(false); }} id="change-photo-btn">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
-                      <circle cx="12" cy="13" r="4"></circle>
-                    </svg>
-                    Cambiar foto de perfil
-                  </button>
+                    {/* Tarjeta Derecha: Datos e Info Técnica */}
+                    <div className="profile-right-card">
+                      <h3>Detalles de la Cuenta</h3>
+                      <div className="profile-details-list">
+                        <div className="profile-detail-row">
+                          <div className="detail-label">Nombre Completo</div>
+                          <div className="detail-value">{displayName || "No especificado"}</div>
+                        </div>
+                        <div className="profile-detail-row">
+                          <div className="detail-label">Correo Electrónico</div>
+                          <div className="detail-value">{userEmail || "No especificado"}</div>
+                        </div>
+                        <div className="profile-detail-row">
+                          <div className="detail-label">Proveedor de Autenticación</div>
+                          <div className="detail-value">
+                            {user?.providerData?.[0]?.providerId === "google.com" ? (
+                              <span className="provider-tag google">Google OAuth</span>
+                            ) : user?.providerData?.[0]?.providerId === "facebook.com" ? (
+                              <span className="provider-tag facebook">Facebook Connect</span>
+                            ) : user?.providerData?.[0]?.providerId === "github.com" ? (
+                              <span className="provider-tag github">GitHub OAuth</span>
+                            ) : (
+                              <span className="provider-tag email">Correo y Contraseña</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="profile-detail-row">
+                          <div className="detail-label">Token de Seguridad (UID)</div>
+                          <div className="detail-value uid-value">{user?.uid}</div>
+                        </div>
+                        {userData?.createdAt && (
+                          <div className="profile-detail-row">
+                            <div className="detail-label">Fecha de Registro</div>
+                            <div className="detail-value">
+                              {new Date(userData.createdAt.seconds ? userData.createdAt.seconds * 1000 : userData.createdAt).toLocaleString("es-CO", { dateStyle: "long" })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
 
-                  <button className="profile-menu-item" id="settings-btn">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="12" cy="12" r="3"></circle>
-                      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-                    </svg>
-                    Configuración
-                  </button>
-
-                  <div className="profile-menu-divider"></div>
-
-                  <button className="profile-menu-item logout" onClick={handleLogout} id="logout-btn">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                      <polyline points="16 17 21 12 16 7"></polyline>
-                      <line x1="21" y1="12" x2="9" y2="12"></line>
-                    </svg>
-                    Cerrar Sesión
-                  </button>
+                      <div className="profile-security-note">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                        </svg>
+                        <div>
+                          <strong>Seguridad de la sesión</strong>
+                          <p>Tu sesión se cerrará automáticamente tras 5 minutos de inactividad para proteger tus datos.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
-            </div>
-
-            <input
-              type="file"
-              id="fileInput"
-              style={{ display: 'none' }}
-              accept="image/*"
-              onChange={handleImageChange}
-            />
+            </main>
           </div>
-        </header>
-
-        {/* ===== CONTENT AREA ===== */}
-        <main className="home-content">
-          {activeView === "historial" && <SessionHistory />}
-          {activeView === "clientes" && <Clientes />}
-          {activeView === "dashboard" && (
-            <div style={{ padding: "32px", color: "#2E5C8A", textAlign: "left" }}>
-              <h2 style={{ fontSize: "1.5rem", fontWeight: "700" }}>Dashboard</h2>
-              <p style={{ color: "#7A9AC7", fontSize: "0.9rem" }}>Próximamente disponible. Selecciona **Historial** o **Clientes** en el menú izquierdo.</p>
-            </div>
-          )}
-        </main>
-      </div>
+        </>
+      )}
     </div>
   );
 }
