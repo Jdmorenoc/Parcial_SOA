@@ -12,12 +12,19 @@ const initialForm = {
 };
 
 function RegisterPage() {
+  const { signup, user, loading: authLoading } = useAuth();
   const [formData, setFormData] = useState(initialForm);
   const [errors, setErrors] = useState({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-  const { signup } = useAuth();
+
+  // Redirigir al inicio si ya está autenticado
+  useEffect(() => {
+    if (user && !authLoading) {
+      navigate("/");
+    }
+  }, [user, authLoading, navigate]);
 
   const validateEmail = (email) => {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
@@ -25,10 +32,12 @@ function RegisterPage() {
 
   const validatePassword = (password) => {
     return (
-      password.length >= 6 &&
+      password.length >= 10 &&
+      password.length <= 72 &&
       /[A-Z]/.test(password) &&
       /[a-z]/.test(password) &&
-      /[0-9]/.test(password)
+      /[0-9]/.test(password) &&
+      /[^A-Za-z0-9]/.test(password)
     );
   };
 
@@ -57,7 +66,7 @@ function RegisterPage() {
       newErrors.password = "La contraseña es obligatoria";
     } else if (!validatePassword(formData.password)) {
       newErrors.password =
-        "La contraseña debe tener mínimo 6 caracteres, una mayúscula, una minúscula y un número";
+        "La contraseña debe tener entre 10 y 72 caracteres, al menos una mayúscula, una minúscula, un número y un carácter especial (ej. !@#$)";
     }
 
     if (!formData.confirmPassword) {
