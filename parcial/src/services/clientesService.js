@@ -1,4 +1,4 @@
-import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where, orderBy, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where, orderBy, serverTimestamp, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase/firebaseConfig";
 
 /**
@@ -16,54 +16,78 @@ import { db } from "../firebase/firebaseConfig";
  * @property {import("firebase/firestore").Timestamp | Date} fechaCreacion - Fecha de registro.
  */
 
-// Colección de Firestore
 const CLIENTES_COLLECTION = "clientes";
 
 /**
- * Clientes mock iniciales estructurados para pruebas en la interfaz visual.
- * @type {Cliente[]}
+ * Verifica si ya existe un cliente con el mismo tipo y número de documento.
+ * @param {string} tipoDocumento 
+ * @param {string} documento 
+ * @param {string} [excludeId] - ID a excluir de la búsqueda (útil al editar un cliente existente).
+ * @returns {Promise<boolean>} True si existe, False si no.
  */
-export const MOCK_CLIENTES = [
-  {
-    id: "mock-1",
-    tipoDocumento: "CC",
-    documento: "1098765432",
-    nombres: "Juan Carlos",
-    apellidos: "Pérez Gómez",
-    email: "juan.perez@example.com",
-    telefono: "3151234567",
-    direccion: "Calle 100 #15-22, Bogotá",
-    estado: "Activo",
-    creadoPor: "system",
-    fechaCreacion: new Date("2026-05-10T14:30:00Z"),
-  },
-  {
-    id: "mock-2",
-    tipoDocumento: "NIT",
-    documento: "900.123.456-7",
-    nombres: "Tecnologías y Soluciones",
-    apellidos: "S.A.S.",
-    email: "contacto@tecnosoluciones.co",
-    telefono: "6015551234",
-    direccion: "Avenida El Dorado #68C-24, Bogotá",
-    estado: "Activo",
-    creadoPor: "system",
-    fechaCreacion: new Date("2026-06-01T09:15:00Z"),
-  },
-  {
-    id: "mock-3",
-    tipoDocumento: "CE",
-    documento: "987654",
-    nombres: "Sarah",
-    apellidos: "Connor Davis",
-    email: "sarah.connor@example.com",
-    telefono: "3209876543",
-    direccion: "Carrera 7 #72-10, Bogotá",
-    estado: "Inactivo",
-    creadoPor: "system",
-    fechaCreacion: new Date("2026-06-08T17:45:00Z"),
+export const checkDocumentoExiste = async (tipoDocumento, documento, excludeId = null) => {
+  try {
+    const clientesRef = collection(db, CLIENTES_COLLECTION);
+    const q = query(
+      clientesRef,
+      where("tipoDocumento", "==", tipoDocumento),
+      where("documento", "==", documento)
+    );
+    const querySnapshot = await getDocs(q);
+    
+    if (querySnapshot.empty) {
+      return false;
+    }
+    
+    // Si hay registros, verificar si el ID no es el que estamos editando
+    if (excludeId) {
+      const match = querySnapshot.docs.find(doc => doc.id !== excludeId);
+      return !!match;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error("Error al verificar documento existente:", error);
+    throw error;
   }
-];
+};
+
+/**
+ * Suscribe a los cambios en tiempo real de la colección de clientes de un usuario.
+ * @param {string} userId - ID del usuario actual.
+ * @param {function(Cliente[]): void} callback - Función callback que recibe la lista actualizada de clientes.
+ * @param {function(Error): void} [onError] - Callback opcional para manejar errores de la base de datos.
+ * @returns {import("firebase/firestore").Unsubscribe} Función para cancelar la suscripción.
+ */
+export const subscribeClientes = (userId, callback, onError) => {
+  const clientesRef = collection(db, CLIENTES_COLLECTION);
+  const q = query(
+    clientesRef,
+    where("creadoPor", "==", userId)
+  );
+
+  return onSnapshot(q, (querySnapshot) => {
+    const clientes = [];
+    querySnapshot.forEach((docSnap) => {
+      clientes.push({
+        id: docSnap.id,
+        ...docSnap.data()
+      });
+    });
+
+    // Ordenar del más nuevo al más antiguo en el lado del cliente (evita requerir índice compuesto)
+    clientes.sort((a, b) => {
+      const timeA = a.fechaCreacion?.seconds || (a.fechaCreacion instanceof Date ? a.fechaCreacion.getTime() / 1000 : 0);
+      const timeB = b.fechaCreacion?.seconds || (b.fechaCreacion instanceof Date ? b.fechaCreacion.getTime() / 1000 : 0);
+      return timeB - timeA;
+    });
+
+    callback(clientes);
+  }, (error) => {
+    console.error("Error en suscripción de clientes:", error);
+    if (onError) onError(error);
+  });
+};
 
 /**
  * Agrega un nuevo cliente a Firestore.
@@ -73,6 +97,12 @@ export const MOCK_CLIENTES = [
  */
 export const addCliente = async (clienteData, userId) => {
   try {
+    // Validar duplicado antes de insertar
+    const existe = await checkDocumentoExiste(clienteData.tipoDocumento, clienteData.documento);
+    if (existe) {
+      throw new Error(`Ya existe un cliente registrado con el documento ${clienteData.tipoDocumento} ${clienteData.documento}`);
+    }
+
     const nuevoCliente = {
       ...clienteData,
       creadoPor: userId,
@@ -87,21 +117,17 @@ export const addCliente = async (clienteData, userId) => {
 };
 
 /**
- * Obtiene todos los clientes registrados por un usuario específico de Firestore.
- * Si no se pasa un userId, intenta obtener todos los clientes disponibles.
- * @param {string} [userId] - Opcional. ID de usuario para filtrar por creador.
+ * Obtiene todos los clientes registrados por un usuario específico de Firestore de forma única.
+ * @param {string} userId - ID de usuario para filtrar por creador.
  * @returns {Promise<Cliente[]>} Lista de clientes.
  */
 export const getClientes = async (userId) => {
   try {
     const clientesRef = collection(db, CLIENTES_COLLECTION);
-    let q;
-    
-    if (userId) {
-      q = query(clientesRef, where("creadoPor", "==", userId), orderBy("fechaCreacion", "desc"));
-    } else {
-      q = query(clientesRef, orderBy("fechaCreacion", "desc"));
-    }
+    const q = query(
+      clientesRef, 
+      where("creadoPor", "==", userId)
+    );
     
     const querySnapshot = await getDocs(q);
     const clientes = [];
@@ -111,6 +137,14 @@ export const getClientes = async (userId) => {
         ...docSnap.data()
       });
     });
+
+    // Ordenar del más nuevo al más antiguo en el lado del cliente (evita requerir índice compuesto)
+    clientes.sort((a, b) => {
+      const timeA = a.fechaCreacion?.seconds || (a.fechaCreacion instanceof Date ? a.fechaCreacion.getTime() / 1000 : 0);
+      const timeB = b.fechaCreacion?.seconds || (b.fechaCreacion instanceof Date ? b.fechaCreacion.getTime() / 1000 : 0);
+      return timeB - timeA;
+    });
+
     return clientes;
   } catch (error) {
     console.error("Error al obtener clientes de Firestore:", error);
@@ -126,6 +160,18 @@ export const getClientes = async (userId) => {
  */
 export const updateCliente = async (id, updatedData) => {
   try {
+    // Si se está cambiando el documento, verificar duplicados excluyendo el cliente actual
+    if (updatedData.tipoDocumento || updatedData.documento) {
+      const existe = await checkDocumentoExiste(
+        updatedData.tipoDocumento, 
+        updatedData.documento, 
+        id
+      );
+      if (existe) {
+        throw new Error(`Ya existe otro cliente registrado con el documento ${updatedData.tipoDocumento} ${updatedData.documento}`);
+      }
+    }
+
     const docRef = doc(db, CLIENTES_COLLECTION, id);
     await updateDoc(docRef, updatedData);
   } catch (error) {

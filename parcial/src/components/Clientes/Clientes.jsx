@@ -1,13 +1,50 @@
-import { useState } from "react";
-import { MOCK_CLIENTES } from "../../services/clientesService";
+import { useState, useEffect } from "react";
+import { useAuth } from "../../context/AuthContext";
+import { 
+  subscribeClientes, 
+  addCliente, 
+  updateCliente, 
+  deleteCliente,
+  checkDocumentoExiste 
+} from "../../services/clientesService";
 import "./Clientes.css";
 
 function Clientes() {
+  const { user } = useAuth();
+  const [clientes, setClientes] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("lista"); // 'lista' | 'esquema'
   const [searchTerm, setSearchTerm] = useState("");
   const [filterEstado, setFilterEstado] = useState("todos");
 
-  // Definición formal de la estructura de clientes para mostrar en la pestaña 'esquema'
+  // Estados de los Modales
+  const [showModal, setShowModal] = useState(false);
+  const [modalMode, setModalMode] = useState("create"); // 'create' | 'edit'
+  const [currentClienteId, setCurrentClienteId] = useState(null);
+  
+  // Estado de Confirmación de Eliminación
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [clienteToDelete, setClienteToDelete] = useState(null);
+
+  // Estados del Formulario
+  const initialFormState = {
+    tipoDocumento: "CC",
+    documento: "",
+    nombres: "",
+    apellidos: "",
+    email: "",
+    telefono: "",
+    direccion: "",
+    estado: "Activo"
+  };
+  const [formData, setFormData] = useState(initialFormState);
+  const [formErrors, setFormErrors] = useState({});
+  const [submitting, setSubmitting] = useState(false);
+
+  // Estados de Notificación / Toast Alerts
+  const [toastAlert, setToastAlert] = useState(null);
+
+  // Definición del esquema para visualización
   const schemaDefinition = [
     { name: "id", type: "string", required: "Sí (Autogenerado)", desc: "Identificador único del cliente asignado automáticamente por Firestore." },
     { name: "tipoDocumento", type: "string", required: "Sí", desc: "Tipo de documento legal. Valores recomendados: CC, CE, NIT, PP." },
@@ -22,28 +59,181 @@ function Clientes() {
     { name: "fechaCreacion", type: "timestamp / date", required: "Sí", desc: "Marca de tiempo del servidor al momento del registro." },
   ];
 
-  // Filtros aplicados sobre los datos mock
-  const filteredClientes = MOCK_CLIENTES.filter((c) => {
+  // Suscripción en tiempo real a los clientes de Firestore para el usuario activo
+  useEffect(() => {
+    if (!user) return;
+    
+    setIsLoading(true);
+    const unsubscribe = subscribeClientes(
+      user.uid, 
+      (updatedClientes) => {
+        setClientes(updatedClientes);
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error("Error al obtener clientes de Firestore:", error);
+        setIsLoading(false);
+        triggerToast("error", "Error de conexión con la base de datos: " + error.message);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Manejo de Alertas Temporales
+  const triggerToast = (type, message) => {
+    setToastAlert({ type, message });
+    setTimeout(() => {
+      setToastAlert(null);
+    }, 4000);
+  };
+
+  // Filtros aplicados sobre los datos en tiempo real
+  const filteredClientes = clientes.filter((c) => {
     const matchesSearch =
-      c.nombres.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.apellidos.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.documento.includes(searchTerm) ||
-      c.email.toLowerCase().includes(searchTerm.toLowerCase());
+      (c.nombres || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.apellidos || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (c.documento || "").includes(searchTerm) ||
+      (c.email || "").toLowerCase().includes(searchTerm.toLowerCase());
       
     const matchesEstado = 
       filterEstado === "todos" || 
-      c.estado.toLowerCase() === filterEstado.toLowerCase();
+      (c.estado || "").toLowerCase() === filterEstado.toLowerCase();
 
     return matchesSearch && matchesEstado;
   });
 
-  const formatDate = (date) => {
-    if (!date) return "—";
-    return new Date(date).toLocaleDateString("es-CO", {
+  const formatDate = (timestamp) => {
+    if (!timestamp) return "—";
+    
+    // Si es un Timestamp de Firestore tiene la propiedad seconds
+    const date = timestamp.seconds ? new Date(timestamp.seconds * 1000) : new Date(timestamp);
+    
+    return date.toLocaleDateString("es-CO", {
       year: "numeric",
-      month: "long",
+      month: "short",
       day: "numeric",
     });
+  };
+
+  // CRUD Event Handlers
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value
+    }));
+    // Limpiar error al editar
+    if (formErrors[name]) {
+      setFormErrors((prev) => ({ ...prev, [name]: "" }));
+    }
+  };
+
+  const validateForm = () => {
+    const errors = {};
+    if (!formData.nombres.trim()) errors.nombres = "El nombre es requerido";
+    if (!formData.apellidos.trim()) errors.apellidos = "El apellido es requerido";
+    if (!formData.documento.trim()) errors.documento = "El número de documento es requerido";
+    
+    // Validar formato de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!formData.email.trim()) {
+      errors.email = "El correo electrónico es requerido";
+    } else if (!emailRegex.test(formData.email.trim())) {
+      errors.email = "Formato de correo electrónico inválido";
+    }
+
+    setFormErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const openCreateModal = () => {
+    setFormData(initialFormState);
+    setFormErrors({});
+    setModalMode("create");
+    setCurrentClienteId(null);
+    setShowModal(true);
+  };
+
+  const openEditModal = (cliente) => {
+    setFormData({
+      tipoDocumento: cliente.tipoDocumento || "CC",
+      documento: cliente.documento || "",
+      nombres: cliente.nombres || "",
+      apellidos: cliente.apellidos || "",
+      email: cliente.email || "",
+      telefono: cliente.telefono || "",
+      direccion: cliente.direccion || "",
+      estado: cliente.estado || "Activo"
+    });
+    setFormErrors({});
+    setModalMode("edit");
+    setCurrentClienteId(cliente.id);
+    setShowModal(true);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!validateForm()) return;
+
+    setSubmitting(true);
+    try {
+      if (modalMode === "create") {
+        // Validación de duplicado local en base de datos antes de enviar
+        const existe = await checkDocumentoExiste(formData.tipoDocumento, formData.documento);
+        if (existe) {
+          setFormErrors((prev) => ({
+            ...prev,
+            documento: `Ya existe un cliente con el documento ${formData.tipoDocumento} ${formData.documento}`
+          }));
+          setSubmitting(false);
+          return;
+        }
+
+        await addCliente(formData, user.uid);
+        triggerToast("success", "¡Cliente registrado correctamente!");
+      } else {
+        // En modo edición
+        const existe = await checkDocumentoExiste(formData.tipoDocumento, formData.documento, currentClienteId);
+        if (existe) {
+          setFormErrors((prev) => ({
+            ...prev,
+            documento: `Ya existe otro cliente con el documento ${formData.tipoDocumento} ${formData.documento}`
+          }));
+          setSubmitting(false);
+          return;
+        }
+
+        await updateCliente(currentClienteId, formData);
+        triggerToast("success", "¡Datos del cliente actualizados correctamente!");
+      }
+      setShowModal(false);
+    } catch (error) {
+      console.error("Error al guardar cliente:", error);
+      triggerToast("error", error.message || "Error al procesar la solicitud en Firestore.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const askDeleteConfirmation = (cliente) => {
+    setClienteToDelete(cliente);
+    setShowDeleteConfirm(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!clienteToDelete) return;
+
+    try {
+      await deleteCliente(clienteToDelete.id);
+      triggerToast("success", "¡Cliente eliminado correctamente!");
+    } catch (error) {
+      console.error("Error al eliminar cliente:", error);
+      triggerToast("error", "No se pudo eliminar el cliente.");
+    } finally {
+      setShowDeleteConfirm(false);
+      setClienteToDelete(null);
+    }
   };
 
   return (
@@ -60,38 +250,50 @@ function Clientes() {
             </svg>
           </div>
           <div>
-            <h2 className="cli-title">Estructura y Gestión de Clientes</h2>
-            <p className="cli-subtitle">Diseño, definición de esquema de datos y visualización de registros</p>
+            <h2 className="cli-title">Gestión de Clientes</h2>
+            <p className="cli-subtitle">Base de datos de clientes vinculados a tu cuenta de Firestore</p>
           </div>
         </div>
 
-        {/* Tab Selector */}
-        <div className="cli-tabs">
-          <button 
-            className={`cli-tab-btn ${activeTab === "lista" ? "active" : ""}`}
-            onClick={() => setActiveTab("lista")}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="8" y1="6" x2="21" y2="6"></line>
-              <line x1="8" y1="12" x2="21" y2="12"></line>
-              <line x1="8" y1="18" x2="21" y2="18"></line>
-              <line x1="3" y1="6" x2="3.01" y2="6"></line>
-              <line x1="3" y1="12" x2="3.01" y2="12"></line>
-              <line x1="3" y1="18" x2="3.01" y2="18"></line>
-            </svg>
-            Vista de Registros
-          </button>
-          <button 
-            className={`cli-tab-btn ${activeTab === "esquema" ? "active" : ""}`}
-            onClick={() => setActiveTab("esquema")}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-              <line x1="3" y1="9" x2="21" y2="9"></line>
-              <line x1="9" y1="21" x2="9" y2="9"></line>
-            </svg>
-            Esquema del Modelo
-          </button>
+        {/* Tab Selector & Add Button */}
+        <div className="cli-header-actions">
+          <div className="cli-tabs">
+            <button 
+              className={`cli-tab-btn ${activeTab === "lista" ? "active" : ""}`}
+              onClick={() => setActiveTab("lista")}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="8" y1="6" x2="21" y2="6"></line>
+                <line x1="8" y1="12" x2="21" y2="12"></line>
+                <line x1="8" y1="18" x2="21" y2="18"></line>
+                <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                <line x1="3" y1="18" x2="3.01" y2="18"></line>
+              </svg>
+              Clientes
+            </button>
+            <button 
+              className={`cli-tab-btn ${activeTab === "esquema" ? "active" : ""}`}
+              onClick={() => setActiveTab("esquema")}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="3" y1="9" x2="21" y2="9"></line>
+                <line x1="9" y1="21" x2="9" y2="9"></line>
+              </svg>
+              Estructura
+            </button>
+          </div>
+
+          {activeTab === "lista" && (
+            <button className="cli-add-btn" onClick={openCreateModal}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+              </svg>
+              Nuevo Cliente
+            </button>
+          )}
         </div>
       </div>
 
@@ -129,59 +331,46 @@ function Clientes() {
               </div>
               
               <div className="cli-crud-alert">
-                <span className="cli-badge-info">Estructura Activa</span>
-                <span className="cli-text-muted">Fase 1: Estructuración y Mockups</span>
+                <span className="cli-badge-info">En línea</span>
+                <span className="cli-text-success">Firestore Sincronizado</span>
               </div>
             </div>
 
-            {/* Clientes Table */}
+            {/* Clientes Table or Loading State */}
             <div className="cli-table-container">
-              {filteredClientes.length > 0 ? (
+              {isLoading ? (
+                <div className="cli-loading-overlay">
+                  <div className="cli-loading-spinner"></div>
+                  <p>Conectando con base de datos...</p>
+                </div>
+              ) : filteredClientes.length > 0 ? (
                 <table className="cli-table">
                   <thead>
                     <tr>
+                      <th>Tipo Doc.</th>
                       <th>Documento</th>
-                      <th>Cliente / Nombre Completo</th>
-                      <th>Contacto</th>
+                      <th>Nombres</th>
+                      <th>Apellidos</th>
+                      <th>Correo Electrónico</th>
+                      <th>Teléfono</th>
                       <th>Dirección</th>
                       <th>Estado</th>
                       <th>Registrado</th>
+                      <th>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredClientes.map((cliente) => (
                       <tr key={cliente.id} className={`cli-row ${cliente.estado.toLowerCase()}`}>
-                        <td className="cli-cell-doc">
+                        <td>
                           <span className="cli-doc-badge">{cliente.tipoDocumento}</span>
-                          <span className="cli-doc-num">{cliente.documento}</span>
                         </td>
-                        <td className="cli-cell-name">
-                          <div className="cli-user-avatar">
-                            {cliente.nombres.charAt(0)}
-                          </div>
-                          <div className="cli-name-group">
-                            <span className="cli-name">{`${cliente.nombres} ${cliente.apellidos}`}</span>
-                            <span className="cli-id-info">ID: {cliente.id}</span>
-                          </div>
-                        </td>
-                        <td className="cli-cell-contact">
-                          <div className="cli-contact-item">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                              <polyline points="22,6 12,13 2,6"></polyline>
-                            </svg>
-                            {cliente.email}
-                          </div>
-                          {cliente.telefono && (
-                            <div className="cli-contact-item">
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
-                              </svg>
-                              {cliente.telefono}
-                            </div>
-                          )}
-                        </td>
-                        <td className="cli-cell-address">{cliente.direccion || "—"}</td>
+                        <td className="cli-doc-num">{cliente.documento}</td>
+                        <td className="cli-text-bold">{cliente.nombres}</td>
+                        <td className="cli-text-bold">{cliente.apellidos}</td>
+                        <td>{cliente.email}</td>
+                        <td>{cliente.telefono || "—"}</td>
+                        <td>{cliente.direccion || "—"}</td>
                         <td>
                           <span className={`cli-status-badge ${cliente.estado.toLowerCase()}`}>
                             <span className="cli-status-dot"></span>
@@ -189,6 +378,30 @@ function Clientes() {
                           </span>
                         </td>
                         <td className="cli-cell-date">{formatDate(cliente.fechaCreacion)}</td>
+                        <td>
+                          <div className="cli-actions-cell">
+                            <button 
+                              className="cli-action-btn edit" 
+                              onClick={() => openEditModal(cliente)}
+                              title="Editar"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                <path d="M18.5 2.5a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                              </svg>
+                            </button>
+                            <button 
+                              className="cli-action-btn delete" 
+                              onClick={() => askDeleteConfirmation(cliente)}
+                              title="Eliminar"
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="3 6 5 6 21 6"></polyline>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                              </svg>
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -200,8 +413,11 @@ function Clientes() {
                     <line x1="12" y1="8" x2="12" y2="12"></line>
                     <line x1="12" y1="16" x2="12.01" y2="16"></line>
                   </svg>
-                  <h3>Sin Resultados</h3>
-                  <p>No se encontraron clientes que coincidan con la búsqueda o filtros aplicados.</p>
+                  <h3>No hay clientes registrados</h3>
+                  <p>Inicia registrando tu primer cliente en la base de datos de Firestore.</p>
+                  <button className="cli-add-btn" onClick={openCreateModal}>
+                    Agregar Cliente
+                  </button>
                 </div>
               )}
             </div>
@@ -249,6 +465,220 @@ function Clientes() {
           </div>
         )}
       </div>
+
+      {/* ===== CRUD FORM MODAL (ADD & EDIT) ===== */}
+      {showModal && (
+        <div className="cli-modal-overlay">
+          <div className="cli-modal-container">
+            <div className="cli-modal-header">
+              <h3>{modalMode === "create" ? "Registrar Nuevo Cliente" : "Editar Datos de Cliente"}</h3>
+              <button className="cli-modal-close-btn" onClick={() => setShowModal(false)}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
+            </div>
+            
+            <form onSubmit={handleSubmit} className="cli-form">
+              <div className="cli-form-grid">
+                {/* Tipo Documento */}
+                <div className="cli-form-group">
+                  <label htmlFor="tipoDocumento">Tipo Documento<span className="required-mark">*</span></label>
+                  <select 
+                    id="tipoDocumento" 
+                    name="tipoDocumento"
+                    value={formData.tipoDocumento}
+                    onChange={handleInputChange}
+                    className="cli-select"
+                  >
+                    <option value="CC">Cédula de Ciudadanía (CC)</option>
+                    <option value="CE">Cédula de Extranjería (CE)</option>
+                    <option value="NIT">NIT (Empresas)</option>
+                    <option value="PP">Pasaporte (PP)</option>
+                  </select>
+                </div>
+
+                {/* Número Documento */}
+                <div className="cli-form-group">
+                  <label htmlFor="documento">Documento de Identidad<span className="required-mark">*</span></label>
+                  <input 
+                    type="text" 
+                    id="documento"
+                    name="documento"
+                    placeholder="Ej. 1098765432"
+                    value={formData.documento}
+                    onChange={handleInputChange}
+                    className={`cli-input ${formErrors.documento ? "error" : ""}`}
+                  />
+                  {formErrors.documento && (
+                    <span className="cli-field-error">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <line x1="12" y1="8" x2="12" y2="12"></line>
+                        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                      </svg>
+                      {formErrors.documento}
+                    </span>
+                  )}
+                </div>
+
+                {/* Nombres */}
+                <div className="cli-form-group">
+                  <label htmlFor="nombres">Nombres<span className="required-mark">*</span></label>
+                  <input 
+                    type="text" 
+                    id="nombres"
+                    name="nombres"
+                    placeholder="Ej. Juan Carlos"
+                    value={formData.nombres}
+                    onChange={handleInputChange}
+                    className={`cli-input ${formErrors.nombres ? "error" : ""}`}
+                  />
+                  {formErrors.nombres && (
+                    <span className="cli-field-error">{formErrors.nombres}</span>
+                  )}
+                </div>
+
+                {/* Apellidos */}
+                <div className="cli-form-group">
+                  <label htmlFor="apellidos">Apellidos / Razón Comercial<span className="required-mark">*</span></label>
+                  <input 
+                    type="text" 
+                    id="apellidos"
+                    name="apellidos"
+                    placeholder="Ej. Pérez Gómez"
+                    value={formData.apellidos}
+                    onChange={handleInputChange}
+                    className={`cli-input ${formErrors.apellidos ? "error" : ""}`}
+                  />
+                  {formErrors.apellidos && (
+                    <span className="cli-field-error">{formErrors.apellidos}</span>
+                  )}
+                </div>
+
+                {/* Correo Electrónico */}
+                <div className="cli-form-group span-2">
+                  <label htmlFor="email">Correo Electrónico<span className="required-mark">*</span></label>
+                  <input 
+                    type="email" 
+                    id="email"
+                    name="email"
+                    placeholder="Ej. juan.perez@email.com"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    className={`cli-input ${formErrors.email ? "error" : ""}`}
+                  />
+                  {formErrors.email && (
+                    <span className="cli-field-error">{formErrors.email}</span>
+                  )}
+                </div>
+
+                {/* Teléfono */}
+                <div className="cli-form-group">
+                  <label htmlFor="telefono">Número de Teléfono</label>
+                  <input 
+                    type="tel" 
+                    id="telefono"
+                    name="telefono"
+                    placeholder="Ej. 3151234567"
+                    value={formData.telefono}
+                    onChange={handleInputChange}
+                    className="cli-input"
+                  />
+                </div>
+
+                {/* Estado */}
+                <div className="cli-form-group">
+                  <label htmlFor="estado">Estado de Cuenta<span className="required-mark">*</span></label>
+                  <select 
+                    id="estado" 
+                    name="estado"
+                    value={formData.estado}
+                    onChange={handleInputChange}
+                    className="cli-select"
+                  >
+                    <option value="Activo">Activo</option>
+                    <option value="Inactivo">Inactivo</option>
+                  </select>
+                </div>
+
+                {/* Dirección */}
+                <div className="cli-form-group span-2">
+                  <label htmlFor="direccion">Dirección Física</label>
+                  <input 
+                    type="text" 
+                    id="direccion"
+                    name="direccion"
+                    placeholder="Ej. Calle 100 #15-22, Bogotá"
+                    value={formData.direccion}
+                    onChange={handleInputChange}
+                    className="cli-input"
+                  />
+                </div>
+              </div>
+
+              <div className="cli-modal-footer">
+                <button type="button" className="cli-btn-secondary" onClick={() => setShowModal(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="cli-btn-primary" disabled={submitting}>
+                  {submitting ? (
+                    <>
+                      <div className="avatar-spinner" style={{ width: "14px", height: "14px" }}></div>
+                      Guardando...
+                    </>
+                  ) : (
+                    "Guardar Cliente"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ===== DELETE CONFIRMATION MODAL ===== */}
+      {showDeleteConfirm && clienteToDelete && (
+        <div className="cli-modal-overlay">
+          <div className="cli-modal-container delete-confirm">
+            <div className="cli-delete-modal-content">
+              <div className="cli-warning-icon-wrapper">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+              </div>
+              <div className="cli-delete-text">
+                <h4>¿Eliminar cliente permanentemente?</h4>
+                <p>Esta acción eliminará a <strong>{`${clienteToDelete.nombres} ${clienteToDelete.apellidos}`}</strong> de la base de datos de Firestore. Esta operación no se puede deshacer.</p>
+              </div>
+            </div>
+            <div className="cli-modal-footer">
+              <button type="button" className="cli-btn-secondary" onClick={() => setShowDeleteConfirm(false)}>
+                Cancelar
+              </button>
+              <button type="button" className="cli-btn-danger" onClick={handleConfirmDelete}>
+                Eliminar Registro
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== NOTIFICATION ALERTS ===== */}
+      {toastAlert && (
+        <div className={`cli-alert-toast ${toastAlert.type}`}>
+          <span>{toastAlert.message}</span>
+          <button className="cli-toast-close" onClick={() => setToastAlert(null)}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
