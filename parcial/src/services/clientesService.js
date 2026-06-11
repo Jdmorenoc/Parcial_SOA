@@ -95,7 +95,7 @@ export const subscribeClientes = (userId, callback, onError) => {
  * @param {string} userId - ID del usuario actual que registra el cliente.
  * @returns {Promise<string>} ID del nuevo cliente creado.
  */
-export const addCliente = async (clienteData, userId) => {
+export const addCliente = async (clienteData, userId, userDisplayName) => {
   try {
     // Validar duplicado antes de insertar
     const existe = await checkDocumentoExiste(clienteData.tipoDocumento, clienteData.documento);
@@ -106,6 +106,7 @@ export const addCliente = async (clienteData, userId) => {
     const nuevoCliente = {
       ...clienteData,
       creadoPor: userId,
+      registradoPor: userDisplayName || "Usuario",
       fechaCreacion: serverTimestamp(),
     };
     const docRef = await addDoc(collection(db, CLIENTES_COLLECTION), nuevoCliente);
