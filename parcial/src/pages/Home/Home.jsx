@@ -5,6 +5,7 @@ import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase
 import { db } from "../../firebase/firebaseConfig";
 import SessionHistory from "../../components/SessionHistory/SessionHistory";
 import Clientes from "../../components/Clientes/Clientes";
+import Productos from "../../components/Productos/Productos";
 import Ventas from "../../components/Ventas/Ventas";
 import "./Home.css";
 
@@ -309,6 +310,18 @@ function Home() {
                 {!sidebarCollapsed && <span>Clientes</span>}
               </a>
               <a 
+                className={`nav-item ${activeView === "productos" ? "active" : ""}`} 
+                href="#" 
+                onClick={(e) => { e.preventDefault(); setActiveView("productos"); }}
+                title="Productos"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+                  <line x1="7" y1="7" x2="7.01" y2="7"></line>
+                </svg>
+                {!sidebarCollapsed && <span>Productos</span>}
+              </a>
+              <a 
                 className={`nav-item ${activeView === "ventas" ? "active" : ""}`} 
                 href="#" 
                 onClick={(e) => { e.preventDefault(); setActiveView("ventas"); }}
@@ -389,6 +402,7 @@ function Home() {
                   <p className="header-subtitle">
                     {activeView === "historial" && "Aquí puedes ver y gestionar tu historial de sesiones"}
                     {activeView === "clientes" && "Aquí puedes ver y estructurar la información de tus clientes"}
+                    {activeView === "productos" && "Aquí puedes ver y estructurar la información de tus productos"}
                     {activeView === "ventas" && "Aquí puedes ver y gestionar tus transacciones de ventas"}
                     {activeView === "perfil" && "Gestión de información personal e imagen"}
                   </p>
@@ -484,6 +498,7 @@ function Home() {
             <main className="home-content">
               {activeView === "historial" && <SessionHistory />}
               {activeView === "clientes" && <Clientes currentUserDisplayName={displayName} />}
+              {activeView === "productos" && <Productos currentUserDisplayName={displayName} />}
               {activeView === "ventas" && <Ventas currentUserDisplayName={displayName} />}
               
               {activeView === "perfil" && (
