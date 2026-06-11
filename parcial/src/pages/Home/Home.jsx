@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../../firebase/firebaseConfig";
 import SessionHistory from "../../components/SessionHistory/SessionHistory";
+import Clientes from "../../components/Clientes/Clientes";
 import "./Home.css";
 
 function Home() {
@@ -196,6 +197,20 @@ function Home() {
             </svg>
             {!sidebarCollapsed && <span>Historial</span>}
           </a>
+          <a 
+            className={`nav-item ${activeView === "clientes" ? "active" : ""}`} 
+            href="#" 
+            onClick={(e) => { e.preventDefault(); setActiveView("clientes"); }}
+            title="Clientes"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+            {!sidebarCollapsed && <span>Clientes</span>}
+          </a>
         </nav>
 
         {/* Sidebar User Card */}
@@ -224,7 +239,11 @@ function Home() {
             <h1 className="header-greeting">
               ¡Bienvenido{displayName ? `, ${displayName.split(" ")[0]}` : ""}! 
             </h1>
-            <p className="header-subtitle">Aquí puedes ver y gestionar tu historial de sesiones</p>
+            <p className="header-subtitle">
+              {activeView === "historial" && "Aquí puedes ver y gestionar tu historial de sesiones"}
+              {activeView === "clientes" && "Aquí puedes ver y estructurar la información de tus clientes"}
+              {activeView === "dashboard" && "Resumen analítico y estadísticas de la aplicación"}
+            </p>
           </div>
 
           <div className="header-right">
@@ -314,7 +333,14 @@ function Home() {
 
         {/* ===== CONTENT AREA ===== */}
         <main className="home-content">
-          <SessionHistory />
+          {activeView === "historial" && <SessionHistory />}
+          {activeView === "clientes" && <Clientes />}
+          {activeView === "dashboard" && (
+            <div style={{ padding: "32px", color: "#2E5C8A", textAlign: "left" }}>
+              <h2 style={{ fontSize: "1.5rem", fontWeight: "700" }}>Dashboard</h2>
+              <p style={{ color: "#7A9AC7", fontSize: "0.9rem" }}>Próximamente disponible. Selecciona **Historial** o **Clientes** en el menú izquierdo.</p>
+            </div>
+          )}
         </main>
       </div>
     </div>
