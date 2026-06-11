@@ -1091,3 +1091,35 @@
     overflow-x: auto;
   }
 }
+
+.cli-export-pdf-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: 2px solid #ff7675;
+  background-color: white;
+  color: #ff7675;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(255, 118, 117, 0.08);
+  transition: all 0.25s ease;
+  font-family: inherit;
+}
+
+.cli-export-pdf-btn:hover {
+  background-color: #ff7675;
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 14px rgba(255, 118, 117, 0.25);
+}
+
+.cli-export-pdf-btn:active {
+  transform: translateY(1px);
+}
+
+.cli-export-pdf-btn svg {
+  flex-shrink: 0;
+}

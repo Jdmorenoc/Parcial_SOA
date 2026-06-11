@@ -469,7 +469,7 @@ function Home() {
             {/* ===== CONTENT AREA ===== */}
             <main className="home-content">
               {activeView === "historial" && <SessionHistory />}
-              {activeView === "clientes" && <Clientes />}
+              {activeView === "clientes" && <Clientes currentUserDisplayName={displayName} />}
               
               {activeView === "perfil" && (
                 <div className="profile-view-container">

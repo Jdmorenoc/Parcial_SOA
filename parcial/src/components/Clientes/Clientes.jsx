@@ -9,7 +9,7 @@ import {
 } from "../../services/clientesService";
 import "./Clientes.css";
 
-function Clientes() {
+function Clientes({ currentUserDisplayName }) {
   const { user } = useAuth();
   const [clientes, setClientes] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -56,8 +56,14 @@ function Clientes() {
     { name: "direccion", type: "string", required: "No", desc: "Dirección física de residencia o domicilio fiscal." },
     { name: "estado", type: "string", required: "Sí", desc: "Estado operativo de la relación comercial. Valores: 'Activo' | 'Inactivo'." },
     { name: "creadoPor", type: "string", required: "Sí", desc: "ID único (uid) del usuario administrador que creó el registro del cliente." },
+    { name: "registradoPor", type: "string", required: "Sí", desc: "Nombre del usuario administrador que registró al cliente." },
     { name: "fechaCreacion", type: "timestamp / date", required: "Sí", desc: "Marca de tiempo del servidor al momento del registro." },
   ];
+
+  // Resolver el nombre del usuario de forma robusta (prop, auth o localStorage)
+  const savedUserData = localStorage.getItem(`userData_${user?.uid}`);
+  const userData = savedUserData ? JSON.parse(savedUserData) : null;
+  const resolvedDisplayName = currentUserDisplayName || user?.displayName || (userData ? `${userData.nombre || ""} ${userData.apellidos || ""}`.trim() : "") || "Usuario";
 
   // Suscripción en tiempo real a los clientes de Firestore para el usuario activo
   useEffect(() => {
@@ -69,6 +75,16 @@ function Clientes() {
       (updatedClientes) => {
         setClientes(updatedClientes);
         setIsLoading(false);
+
+        // Auto-migración para clientes existentes en Firestore que no tengan registradoPor
+        if (resolvedDisplayName) {
+          updatedClientes.forEach((cliente) => {
+            if (!cliente.registradoPor) {
+              updateCliente(cliente.id, { registradoPor: resolvedDisplayName })
+                .catch((err) => console.error("Error al actualizar registradoPor para cliente:", cliente.id, err));
+            }
+          });
+        }
       },
       (error) => {
         console.error("Error al obtener clientes de Firestore:", error);
@@ -78,7 +94,7 @@ function Clientes() {
     );
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, resolvedDisplayName]);
 
   // Manejo de Alertas Temporales
   const triggerToast = (type, message) => {
@@ -114,6 +130,101 @@ function Clientes() {
       month: "short",
       day: "numeric",
     });
+  };
+
+  const exportToPDF = async () => {
+    try {
+      let jsPDFClass = window.jspdf?.jsPDF;
+      if (!jsPDFClass) {
+        triggerToast("info", "Cargando componentes de exportación...");
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+          script.onload = () => {
+            const autoTableScript = document.createElement("script");
+            autoTableScript.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.6.0/jspdf.plugin.autotable.min.js";
+            autoTableScript.onload = () => {
+              resolve();
+            };
+            autoTableScript.onerror = () => reject(new Error("Error al cargar la tabla del PDF"));
+            document.body.appendChild(autoTableScript);
+          };
+          script.onerror = () => reject(new Error("Error al cargar la librería PDF"));
+          document.body.appendChild(script);
+        });
+        jsPDFClass = window.jspdf?.jsPDF;
+      }
+
+      if (!jsPDFClass) {
+        throw new Error("No se pudo iniciar la librería de PDF");
+      }
+
+      const doc = new jsPDFClass("landscape");
+      
+      // Título y detalles
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(18);
+      doc.setTextColor(46, 92, 138); // #2E5C8A
+      doc.text("SessionApp — Base de Datos de Clientes", 14, 20);
+      
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Fecha de generación: ${new Date().toLocaleString("es-CO")}`, 14, 28);
+      
+      let filterText = "Todos";
+      if (searchTerm) {
+        filterText = `Búsqueda: "${searchTerm}"`;
+      }
+      const estadoText = filterEstado === "todos" ? "Todos" : filterEstado === "activo" ? "Activos" : "Inactivos";
+      doc.text(`Filtros: ${filterText} | Estado: ${estadoText} | Total: ${filteredClientes.length} registros`, 14, 34);
+      
+      // Dibujar una línea decorativa
+      doc.setDrawColor(212, 227, 245); // #D4E3F5
+      doc.setLineWidth(0.5);
+      doc.line(14, 38, 282, 38);
+
+      const tableColumns = [
+        "Tipo Doc.",
+        "Documento",
+        "Nombres",
+        "Apellidos",
+        "Correo Electrónico",
+        "Teléfono",
+        "Dirección",
+        "Estado",
+        "Registrado por",
+        "Fecha"
+      ];
+      
+      const tableRows = filteredClientes.map((cliente) => [
+        cliente.tipoDocumento || "",
+        cliente.documento || "",
+        cliente.nombres || "",
+        cliente.apellidos || "",
+        cliente.email || "",
+        cliente.telefono || "—",
+        cliente.direccion || "—",
+        cliente.estado || "",
+        cliente.registradoPor || resolvedDisplayName,
+        formatDate(cliente.fechaCreacion)
+      ]);
+
+      doc.autoTable({
+        head: [tableColumns],
+        body: tableRows,
+        startY: 42,
+        theme: "striped",
+        styles: { fontSize: 8, cellPadding: 3, font: "helvetica" },
+        headStyles: { fillColor: [46, 92, 138], textColor: 255, fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [248, 250, 253] },
+      });
+
+      doc.save(`clientes_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (error) {
+      console.error("Error al exportar PDF:", error);
+      triggerToast("error", error.message || "Hubo un error al generar el PDF.");
+    }
   };
 
   // CRUD Event Handlers
@@ -190,7 +301,7 @@ function Clientes() {
           return;
         }
 
-        await addCliente(formData, user.uid);
+        await addCliente(formData, user.uid, resolvedDisplayName);
         triggerToast("success", "¡Cliente registrado correctamente!");
       } else {
         // En modo edición
@@ -286,13 +397,31 @@ function Clientes() {
           </div>
 
           {activeTab === "lista" && (
-            <button className="cli-add-btn" onClick={openCreateModal}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-              Nuevo Cliente
-            </button>
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button 
+                className="cli-export-pdf-btn" 
+                onClick={exportToPDF} 
+                title="Exportar a PDF"
+                disabled={filteredClientes.length === 0}
+                style={{ opacity: filteredClientes.length === 0 ? 0.6 : 1, cursor: filteredClientes.length === 0 ? "not-allowed" : "pointer" }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="16" y1="13" x2="8" y2="13"></line>
+                  <line x1="16" y1="17" x2="8" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+                Exportar PDF
+              </button>
+              <button className="cli-add-btn" onClick={openCreateModal}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="5" x2="12" y2="19"></line>
+                  <line x1="5" y1="12" x2="19" y2="12"></line>
+                </svg>
+                Nuevo Cliente
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -355,7 +484,8 @@ function Clientes() {
                       <th>Teléfono</th>
                       <th>Dirección</th>
                       <th>Estado</th>
-                      <th>Registrado</th>
+                      <th>Registrado por</th>
+                      <th>Fecha de Registro</th>
                       <th>Acciones</th>
                     </tr>
                   </thead>
@@ -377,6 +507,7 @@ function Clientes() {
                             {cliente.estado}
                           </span>
                         </td>
+                        <td className="cli-text-bold">{cliente.registradoPor || resolvedDisplayName}</td>
                         <td className="cli-cell-date">{formatDate(cliente.fechaCreacion)}</td>
                         <td>
                           <div className="cli-actions-cell">

@@ -189,6 +189,94 @@ function SessionHistory() {
     });
   };
 
+  const exportToPDF = async () => {
+    try {
+      let jsPDFClass = window.jspdf?.jsPDF;
+      if (!jsPDFClass) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+          script.onload = () => {
+            const autoTableScript = document.createElement("script");
+            autoTableScript.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.6.0/jspdf.plugin.autotable.min.js";
+            autoTableScript.onload = () => {
+              resolve();
+            };
+            autoTableScript.onerror = () => reject(new Error("Error al cargar la tabla del PDF"));
+            document.body.appendChild(autoTableScript);
+          };
+          script.onerror = () => reject(new Error("Error al cargar la librería PDF"));
+          document.body.appendChild(script);
+        });
+        jsPDFClass = window.jspdf?.jsPDF;
+      }
+
+      if (!jsPDFClass) {
+        throw new Error("No se pudo iniciar la librería de PDF");
+      }
+
+      const doc = new jsPDFClass();
+      
+      // Título y detalles
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(18);
+      doc.setTextColor(46, 92, 138); // #2E5C8A
+      doc.text("SessionApp — Historial de Sesiones", 14, 20);
+      
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Fecha de generación: ${new Date().toLocaleString("es-CO")}`, 14, 28);
+      
+      let filterText = "Todos los usuarios";
+      if (isSearching && searchEmail) {
+        filterText = `Usuario: ${searchEmail}`;
+      }
+      const statusText = filterStatus === "all" ? "Todas" : filterStatus === "activa" ? "Activas" : "Finalizadas";
+      doc.text(`Filtros: ${filterText} | Estado: ${statusText} | Total: ${baseFilteredData.length} registros`, 14, 34);
+      
+      // Dibujar una línea decorativa
+      doc.setDrawColor(212, 227, 245); // #D4E3F5
+      doc.setLineWidth(0.5);
+      doc.line(14, 38, 196, 38);
+
+      const tableColumns = ["#", "Usuario", "Correo", "Proveedor", "Estado", "Inicio de Sesión", "Fin de Sesión"];
+      const tableRows = baseFilteredData.map((item, index) => [
+        index + 1,
+        `${item.nombre || ""} ${item.apellidos || ""}`.trim() || "Usuario",
+        item.email || "—",
+        item.provider ? item.provider.toUpperCase() : "EMAIL",
+        item.status,
+        formatDate(item.startTime),
+        item.status === "Activa" ? "En curso" : formatDate(item.endTime)
+      ]);
+
+      doc.autoTable({
+        head: [tableColumns],
+        body: tableRows,
+        startY: 42,
+        theme: "striped",
+        styles: { fontSize: 8, cellPadding: 3, font: "helvetica" },
+        headStyles: { fillColor: [46, 92, 138], textColor: 255, fontStyle: "bold" },
+        alternateRowStyles: { fillColor: [248, 250, 253] },
+        columnStyles: {
+          0: { cellWidth: 10 },
+          1: { cellWidth: 40 },
+          2: { cellWidth: 45 },
+          3: { cellWidth: 20 },
+          4: { cellWidth: 20 },
+          5: { cellWidth: 30 },
+          6: { cellWidth: 30 }
+        }
+      });
+
+      doc.save(`historial_sesiones_${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (error) {
+      console.error("Error al exportar PDF:", error);
+      alert(error.message || "Hubo un error al generar el PDF.");
+    }
+  };
+
   const baseFilteredData = historyData.filter((item) => {
     if (filterStatus === "all") return true;
     return item.status.toLowerCase() === filterStatus;
@@ -217,6 +305,22 @@ function SessionHistory() {
             </h2>
             <span className="sh-count">{baseFilteredData.length} registro{baseFilteredData.length !== 1 ? "s" : ""}</span>
           </div>
+          <button 
+            className="sh-export-pdf-btn" 
+            onClick={exportToPDF} 
+            title="Exportar a PDF"
+            disabled={baseFilteredData.length === 0}
+            style={{ opacity: baseFilteredData.length === 0 ? 0.6 : 1, cursor: baseFilteredData.length === 0 ? "not-allowed" : "pointer" }}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+            Exportar PDF
+          </button>
         </div>
 
         {/* Search Bar */}
