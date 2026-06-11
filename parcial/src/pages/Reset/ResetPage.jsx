@@ -27,10 +27,12 @@ export default function ResetPage() {
 
   const validatePassword = (password) => {
     return (
-      password.length >= 6 &&
+      password.length >= 10 &&
+      password.length <= 72 &&
       /[A-Z]/.test(password) &&
       /[a-z]/.test(password) &&
-      /[0-9]/.test(password)
+      /[0-9]/.test(password) &&
+      /[^A-Za-z0-9]/.test(password)
     );
   };
 
@@ -40,7 +42,7 @@ export default function ResetPage() {
     if (!formData.password) {
       newErrors.password = 'La contraseña es obligatoria';
     } else if (!validatePassword(formData.password)) {
-      newErrors.password = 'La contraseña debe tener mínimo 6 caracteres, una mayúscula, una minúscula y un número';
+      newErrors.password = 'La contraseña debe tener entre 10 y 72 caracteres, al menos una mayúscula, una minúscula, un número y un carácter especial (ej. !@#$)';
     }
 
     if (!formData.confirmPassword) {

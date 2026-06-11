@@ -5,6 +5,7 @@ import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase
 import { db } from "../../firebase/firebaseConfig";
 import SessionHistory from "../../components/SessionHistory/SessionHistory";
 import Clientes from "../../components/Clientes/Clientes";
+import Ventas from "../../components/Ventas/Ventas";
 import "./Home.css";
 
 function Home() {
@@ -308,6 +309,18 @@ function Home() {
                 {!sidebarCollapsed && <span>Clientes</span>}
               </a>
               <a 
+                className={`nav-item ${activeView === "ventas" ? "active" : ""}`} 
+                href="#" 
+                onClick={(e) => { e.preventDefault(); setActiveView("ventas"); }}
+                title="Ventas"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="12" y1="1" x2="12" y2="23"></line>
+                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                </svg>
+                {!sidebarCollapsed && <span>Ventas</span>}
+              </a>
+              <a 
                 className={`nav-item ${activeView === "perfil" ? "active" : ""}`} 
                 href="#" 
                 onClick={(e) => { e.preventDefault(); setActiveView("perfil"); }}
@@ -376,6 +389,7 @@ function Home() {
                   <p className="header-subtitle">
                     {activeView === "historial" && "Aquí puedes ver y gestionar tu historial de sesiones"}
                     {activeView === "clientes" && "Aquí puedes ver y estructurar la información de tus clientes"}
+                    {activeView === "ventas" && "Aquí puedes ver y gestionar tus transacciones de ventas"}
                     {activeView === "perfil" && "Gestión de información personal e imagen"}
                   </p>
                 </div>
@@ -470,6 +484,7 @@ function Home() {
             <main className="home-content">
               {activeView === "historial" && <SessionHistory />}
               {activeView === "clientes" && <Clientes currentUserDisplayName={displayName} />}
+              {activeView === "ventas" && <Ventas currentUserDisplayName={displayName} />}
               
               {activeView === "perfil" && (
                 <div className="profile-view-container">
