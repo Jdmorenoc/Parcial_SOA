@@ -47,13 +47,13 @@ function Productos({ currentUserDisplayName }) {
   // Definición del esquema para visualización
   const schemaDefinition = [
     { name: "id", type: "string", required: "Sí (Autogenerado)", desc: "Identificador único del producto asignado automáticamente por Firestore." },
-    { name: "categoria", type: "string", required: "Sí", desc: "Tipo de codigo legal. Valores recomendados: Electronica, Hogar, Ropa, Alimentos." },
+    { name: "categoria", type: "string", required: "Sí", desc: "Tipo o categoría del producto. Valores recomendados: Electronica, Hogar, Ropa, Alimentos." },
     { name: "codigo", type: "string", required: "Sí", desc: "Número único de codigo de identidad (clave de negocio, no duplicable)." },
     { name: "nombre", type: "string", required: "Sí", desc: "Nombre(s) del producto o razón social principal." },
     { name: "descripcion", type: "string", required: "Sí", desc: "Apellido(s) del producto o siglas comerciales (ej. S.A.S.)." },
     { name: "precio", type: "string", required: "Sí", desc: "Correo electrónico principal de contacto. Debe cumplir con formato estándar." },
-    { name: "stock", type: "string", required: "No", desc: "Número de teléfono fijo o móvil. Formato libre." },
-    { name: "marca", type: "string", required: "No", desc: "Dirección física de residencia o domicilio fiscal." },
+    { name: "stock", type: "number", required: "No", desc: "Cantidad de unidades del producto disponibles en el inventario." },
+    { name: "marca", type: "string", required: "No", desc: "Marca o fabricante del producto." },
     { name: "estado", type: "string", required: "Sí", desc: "Estado operativo de la relación comercial. Valores: 'Activo' | 'Inactivo'." },
     { name: "creadoPor", type: "string", required: "Sí", desc: "ID único (uid) del usuario administrador que creó el registro del producto." },
     { name: "registradoPor", type: "string", required: "Sí", desc: "Nombre del usuario administrador que registró al producto." },
@@ -190,13 +190,13 @@ function Productos({ currentUserDisplayName }) {
       doc.line(14, 38, 282, 38);
 
       const tableColumns = [
-        "Tipo Doc.",
+        "Tipo de Producto",
         "Código",
         "Nombre",
         "Descripción",
         "Precio",
-        "Teléfono",
-        "Dirección",
+        "Stock",
+        "Marca",
         "Estado",
         "Registrado por",
         "Fecha"
@@ -500,13 +500,13 @@ function Productos({ currentUserDisplayName }) {
                 <table className="prod-table">
                   <thead>
                     <tr>
-                      <th>Tipo Doc.</th>
+                      <th>Tipo de Producto</th>
                       <th>Código</th>
                       <th>Nombre</th>
                       <th>Descripción</th>
                       <th>Precio</th>
-                      <th>Teléfono</th>
-                      <th>Dirección</th>
+                      <th>Stock</th>
+                      <th>Marca</th>
                       <th>Estado</th>
                       <th>Registrado por</th>
                       <th>Fecha de Registro</th>

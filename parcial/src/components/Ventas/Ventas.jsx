@@ -7,12 +7,14 @@ import {
   deleteVenta 
 } from "../../services/ventasService";
 import { subscribeClientes } from "../../services/clientesService";
+import { subscribeProductos, updateProducto } from "../../services/productosService";
 import "./Ventas.css";
 
 function Ventas({ currentUserDisplayName }) {
   const { user } = useAuth();
   const [ventas, setVentas] = useState([]);
   const [clientes, setClientes] = useState([]);
+  const [productos, setProductos] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("lista"); // 'lista' | 'esquema'
   const [searchTerm, setSearchTerm] = useState("");
@@ -30,6 +32,7 @@ function Ventas({ currentUserDisplayName }) {
   // Estados del Formulario
   const initialFormState = {
     clienteId: "",
+    productoId: "",
     producto: "",
     cantidad: 1,
     precioUnitario: 0,
@@ -76,6 +79,23 @@ function Ventas({ currentUserDisplayName }) {
       },
       (error) => {
         console.error("Error al obtener clientes para el selector de ventas:", error);
+      }
+    );
+    return () => unsubscribe();
+  }, [user]);
+
+  // Suscripción a los productos en tiempo real para el selector
+  useEffect(() => {
+    if (!user) return;
+    const unsubscribe = subscribeProductos(
+      user.uid,
+      (updatedProductos) => {
+        // Filtrar productos para mostrar solo los Activos
+        const activeProductos = updatedProductos.filter(p => p.estado === "Activo");
+        setProductos(activeProductos);
+      },
+      (error) => {
+        console.error("Error al obtener productos para el selector de ventas:", error);
       }
     );
     return () => unsubscribe();
@@ -244,6 +264,25 @@ function Ventas({ currentUserDisplayName }) {
       value = numericValue ? new Intl.NumberFormat("es-CO").format(numericValue) : "";
     }
 
+    if (name === "productoId") {
+      const selectedProd = productos.find(p => p.id === value);
+      if (selectedProd) {
+        setFormData((prev) => ({
+          ...prev,
+          productoId: value,
+          producto: selectedProd.nombre,
+          precioUnitario: selectedProd.precio ? new Intl.NumberFormat("es-CO").format(selectedProd.precio) : "0"
+        }));
+        setFormErrors((prev) => ({
+          ...prev,
+          productoId: "",
+          producto: "",
+          precioUnitario: ""
+        }));
+        return;
+      }
+    }
+
     setFormData((prev) => ({
       ...prev,
       [name]: value
@@ -257,10 +296,34 @@ function Ventas({ currentUserDisplayName }) {
   const validateForm = () => {
     const errors = {};
     if (!formData.clienteId) errors.clienteId = "Debe seleccionar un cliente";
-    if (!formData.producto.trim()) errors.producto = "El producto/concepto es requerido";
-    if (!formData.cantidad || Number(formData.cantidad) <= 0) {
-      errors.cantidad = "La cantidad debe ser mayor a 0";
+    
+    if (!formData.productoId) {
+      errors.productoId = "Debe seleccionar un producto";
+    } else {
+      const selectedProduct = productos.find(p => p.id === formData.productoId);
+      if (!selectedProduct) {
+        errors.productoId = "El producto seleccionado no existe o está inactivo";
+      } else {
+        const cantidadInput = Number(formData.cantidad);
+        if (!formData.cantidad || cantidadInput <= 0) {
+          errors.cantidad = "La cantidad debe ser mayor a 0";
+        } else {
+          let availableStock = selectedProduct.stock || 0;
+
+          if (modalMode === "edit" && currentVentaId) {
+            const originalVenta = ventas.find(v => v.id === currentVentaId);
+            if (originalVenta && (originalVenta.productoId === formData.productoId || originalVenta.producto === selectedProduct.nombre)) {
+              availableStock += originalVenta.cantidad || 0;
+            }
+          }
+
+          if (cantidadInput > availableStock) {
+            errors.cantidad = `La cantidad supera el stock disponible (${availableStock} unidades)`;
+          }
+        }
+      }
     }
+
     const precioNumerico = Number(String(formData.precioUnitario).replace(/\D/g, ""));
     if (formData.precioUnitario === undefined || formData.precioUnitario === "" || precioNumerico < 0) {
       errors.precioUnitario = "El precio unitario debe ser igual o mayor a 0";
@@ -275,9 +338,16 @@ function Ventas({ currentUserDisplayName }) {
       triggerToast("error", "No puedes registrar ventas sin clientes activos. Registra un cliente primero.");
       return;
     }
+    if (productos.length === 0) {
+      triggerToast("error", "No puedes registrar ventas sin productos activos. Registra un producto primero.");
+      return;
+    }
     setFormData({
       ...initialFormState,
-      clienteId: clientes[0]?.id || ""
+      clienteId: clientes[0]?.id || "",
+      productoId: productos[0]?.id || "",
+      producto: productos[0]?.nombre || "",
+      precioUnitario: productos[0]?.precio ? new Intl.NumberFormat("es-CO").format(productos[0].precio) : "0",
     });
     setFormErrors({});
     setModalMode("create");
@@ -286,8 +356,10 @@ function Ventas({ currentUserDisplayName }) {
   };
 
   const openEditModal = (venta) => {
+    const matchedProduct = productos.find(p => p.id === venta.productoId || p.nombre === venta.producto);
     setFormData({
       clienteId: venta.clienteId || "",
+      productoId: matchedProduct?.id || venta.productoId || "",
       producto: venta.producto || "",
       cantidad: venta.cantidad || 1,
       precioUnitario: venta.precioUnitario ? new Intl.NumberFormat("es-CO").format(venta.precioUnitario) : "",
@@ -322,9 +394,52 @@ function Ventas({ currentUserDisplayName }) {
 
       if (modalMode === "create") {
         await addVenta(dataToSave, user.uid, resolvedDisplayName);
+
+        // Descontar stock en Firestore
+        const selectedProduct = productos.find(p => p.id === formData.productoId);
+        if (selectedProduct) {
+          const newStock = (selectedProduct.stock || 0) - Number(formData.cantidad);
+          await updateProducto(selectedProduct.id, { stock: newStock });
+        }
+
         triggerToast("success", "¡Venta registrada correctamente!");
       } else {
+        // En modo edición
+        const originalVenta = ventas.find(v => v.id === currentVentaId);
         await updateVenta(currentVentaId, dataToSave);
+
+        // Actualizar stock de los productos involucrados
+        if (originalVenta) {
+          const originalProdId = originalVenta.productoId || productos.find(p => p.nombre === originalVenta.producto)?.id;
+          const newProdId = formData.productoId;
+
+          if (originalProdId === newProdId) {
+            // Mismo producto, ajustar la diferencia
+            const selectedProduct = productos.find(p => p.id === newProdId);
+            if (selectedProduct) {
+              const diff = Number(formData.cantidad) - (originalVenta.cantidad || 0);
+              const newStock = (selectedProduct.stock || 0) - diff;
+              await updateProducto(selectedProduct.id, { stock: newStock });
+            }
+          } else {
+            // Productos diferentes
+            // Devolver al stock del producto original
+            if (originalProdId) {
+              const originalProduct = productos.find(p => p.id === originalProdId);
+              if (originalProduct) {
+                const refundedStock = (originalProduct.stock || 0) + (originalVenta.cantidad || 0);
+                await updateProducto(originalProduct.id, { stock: refundedStock });
+              }
+            }
+            // Descontar del stock del nuevo producto
+            const newProduct = productos.find(p => p.id === newProdId);
+            if (newProduct) {
+              const deductedStock = (newProduct.stock || 0) - Number(formData.cantidad);
+              await updateProducto(newProduct.id, { stock: deductedStock });
+            }
+          }
+        }
+
         triggerToast("success", "¡Registro de venta actualizado correctamente!");
       }
       setShowModal(false);
@@ -346,6 +461,17 @@ function Ventas({ currentUserDisplayName }) {
 
     try {
       await deleteVenta(ventaToDelete.id);
+
+      // Devolver stock al producto
+      const prodId = ventaToDelete.productoId || productos.find(p => p.nombre === ventaToDelete.producto)?.id;
+      if (prodId) {
+        const product = productos.find(p => p.id === prodId);
+        if (product) {
+          const restoredStock = (product.stock || 0) + (ventaToDelete.cantidad || 0);
+          await updateProducto(product.id, { stock: restoredStock });
+        }
+      }
+
       triggerToast("success", "¡Registro de venta eliminado correctamente!");
     } catch (error) {
       console.error("Error al eliminar venta:", error);
@@ -645,24 +771,34 @@ function Ventas({ currentUserDisplayName }) {
 
                 {/* Producto */}
                 <div className="ven-form-group span-2">
-                  <label htmlFor="producto">Producto / Servicio Vendido<span className="required-mark">*</span></label>
-                  <input 
-                    type="text" 
-                    id="producto"
-                    name="producto"
-                    placeholder="Ej. Licencia de Software, Computador Portátil"
-                    value={formData.producto}
+                  <label htmlFor="productoId">Producto Vendido (Código o Nombre)<span className="required-mark">*</span></label>
+                  <select 
+                    id="productoId" 
+                    name="productoId"
+                    value={formData.productoId}
                     onChange={handleInputChange}
-                    className={`ven-input ${formErrors.producto ? "error" : ""}`}
-                  />
-                  {formErrors.producto && (
+                    className={`ven-select ${formErrors.productoId ? "error" : ""}`}
+                  >
+                    <option value="" disabled>Seleccione un producto...</option>
+                    {productos.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        [{p.codigo}] {p.nombre} — (Stock: {p.stock !== undefined ? p.stock : 0})
+                      </option>
+                    ))}
+                  </select>
+                  {formErrors.productoId && (
                     <span className="ven-field-error">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="12" r="10"></circle>
                         <line x1="12" y1="8" x2="12" y2="12"></line>
                         <line x1="12" y1="16" x2="12.01" y2="16"></line>
                       </svg>
-                      {formErrors.producto}
+                      {formErrors.productoId}
+                    </span>
+                  )}
+                  {formData.productoId && (
+                    <span className="ven-stock-info" style={{ fontSize: "0.8rem", color: "#8e7a9c", marginTop: "4px" }}>
+                      Stock disponible: <strong style={{ color: "#7d3c98" }}>{productos.find(p => p.id === formData.productoId)?.stock || 0}</strong> unidades.
                     </span>
                   )}
                 </div>
