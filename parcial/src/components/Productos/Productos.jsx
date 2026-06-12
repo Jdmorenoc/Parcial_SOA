@@ -132,6 +132,11 @@ function Productos({ currentUserDisplayName }) {
     });
   };
 
+  const formatPrice = (value) => {
+    if (value === undefined || value === null || value === "") return "—";
+    return new Intl.NumberFormat("es-CO").format(value);
+  };
+
   const exportToPDF = async () => {
     try {
       let jsPDFClass = window.jspdf?.jsPDF;
@@ -202,7 +207,7 @@ function Productos({ currentUserDisplayName }) {
         producto.codigo || "",
         producto.nombre || "",
         producto.descripcion || "",
-        producto.precio || "",
+        formatPrice(producto.precio),
         producto.stock || "—",
         producto.marca || "—",
         producto.estado || "",
@@ -229,7 +234,14 @@ function Productos({ currentUserDisplayName }) {
 
   // CRUD Event Handlers
   const handleInputChange = (e) => {
-    const { name, value } = e.target;
+    let { name, value } = e.target;
+
+    // Formatear precio con separadores de miles
+    if (name === "precio") {
+      const numericValue = value.replace(/\D/g, "");
+      value = numericValue ? new Intl.NumberFormat("es-CO").format(numericValue) : "";
+    }
+
     setFormData((prev) => ({
       ...prev,
       [name]: value
@@ -247,9 +259,10 @@ function Productos({ currentUserDisplayName }) {
     if (!formData.codigo.trim()) errors.codigo = "El código es requerido";
     
     // Validar precio
+    const precioNumerico = Number(String(formData.precio).replace(/\D/g, ""));
     if (!String(formData.precio).trim()) {
       errors.precio = "El precio es requerido";
-    } else if (Number(formData.precio) <= 0) {
+    } else if (precioNumerico <= 0) {
       errors.precio = "El precio debe ser mayor a cero";
     }
 
@@ -271,7 +284,7 @@ function Productos({ currentUserDisplayName }) {
       codigo: producto.codigo || "",
       nombre: producto.nombre || "",
       descripcion: producto.descripcion || "",
-      precio: producto.precio || "",
+      precio: producto.precio ? new Intl.NumberFormat("es-CO").format(producto.precio) : "",
       stock: producto.stock || "",
       marca: producto.marca || "",
       estado: producto.estado || "Activo"
@@ -300,7 +313,13 @@ function Productos({ currentUserDisplayName }) {
           return;
         }
 
-        await addProducto(formData, user.uid, resolvedDisplayName);
+        const dataToSave = {
+          ...formData,
+          precio: Number(String(formData.precio).replace(/\D/g, "")),
+          stock: formData.stock ? Number(formData.stock) : 0,
+        };
+
+        await addProducto(dataToSave, user.uid, resolvedDisplayName);
         triggerToast("success", "¡Producto registrado correctamente!");
       } else {
         // En modo edición
@@ -314,7 +333,13 @@ function Productos({ currentUserDisplayName }) {
           return;
         }
 
-        await updateProducto(currentProductoId, formData);
+        const dataToUpdate = {
+          ...formData,
+          precio: Number(String(formData.precio).replace(/\D/g, "")),
+          stock: formData.stock ? Number(formData.stock) : 0,
+        };
+
+        await updateProducto(currentProductoId, dataToUpdate);
         triggerToast("success", "¡Datos del producto actualizados correctamente!");
       }
       setShowModal(false);
@@ -497,7 +522,7 @@ function Productos({ currentUserDisplayName }) {
                         <td className="prod-doc-num">{producto.codigo}</td>
                         <td className="prod-text-bold">{producto.nombre}</td>
                         <td className="prod-text-bold">{producto.descripcion}</td>
-                        <td>{producto.precio}</td>
+                        <td>{formatPrice(producto.precio)}</td>
                         <td>{producto.stock || "—"}</td>
                         <td>{producto.marca || "—"}</td>
                         <td>
@@ -691,10 +716,11 @@ function Productos({ currentUserDisplayName }) {
                 <div className="prod-form-group span-2">
                   <label htmlFor="precio">Precio<span className="required-mark">*</span></label>
                   <input 
-                    type="number" 
+                    type="text" 
+                    inputMode="numeric"
                     id="precio"
                     name="precio"
-                    placeholder="Ej. 50000"
+                    placeholder="Ej. 50.000"
                     value={formData.precio}
                     onChange={handleInputChange}
                     className={`prod-input ${formErrors.precio ? "error" : ""}`}
