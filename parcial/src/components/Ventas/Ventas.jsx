@@ -236,7 +236,14 @@ function Ventas({ currentUserDisplayName }) {
 
   // CRUD Event Handlers
   const handleInputChange = (e) => {
-    const { name, value } = e.target;
+    let { name, value } = e.target;
+
+    // Formatear precioUnitario con separadores de miles
+    if (name === "precioUnitario") {
+      const numericValue = value.replace(/\D/g, "");
+      value = numericValue ? new Intl.NumberFormat("es-CO").format(numericValue) : "";
+    }
+
     setFormData((prev) => ({
       ...prev,
       [name]: value
@@ -254,7 +261,8 @@ function Ventas({ currentUserDisplayName }) {
     if (!formData.cantidad || Number(formData.cantidad) <= 0) {
       errors.cantidad = "La cantidad debe ser mayor a 0";
     }
-    if (formData.precioUnitario === undefined || Number(formData.precioUnitario) < 0) {
+    const precioNumerico = Number(String(formData.precioUnitario).replace(/\D/g, ""));
+    if (formData.precioUnitario === undefined || formData.precioUnitario === "" || precioNumerico < 0) {
       errors.precioUnitario = "El precio unitario debe ser igual o mayor a 0";
     }
 
@@ -282,7 +290,7 @@ function Ventas({ currentUserDisplayName }) {
       clienteId: venta.clienteId || "",
       producto: venta.producto || "",
       cantidad: venta.cantidad || 1,
-      precioUnitario: venta.precioUnitario || 0,
+      precioUnitario: venta.precioUnitario ? new Intl.NumberFormat("es-CO").format(venta.precioUnitario) : "",
       metodoPago: venta.metodoPago || "Efectivo",
       estado: venta.estado || "Completada"
     });
@@ -306,7 +314,10 @@ function Ventas({ currentUserDisplayName }) {
 
       const dataToSave = {
         ...formData,
-        clienteNombre
+        clienteNombre,
+        precioUnitario: Number(String(formData.precioUnitario).replace(/\D/g, "")),
+        cantidad: Number(formData.cantidad),
+        total: totalCalculado
       };
 
       if (modalMode === "create") {
@@ -345,7 +356,7 @@ function Ventas({ currentUserDisplayName }) {
     }
   };
 
-  const totalCalculado = Number(formData.cantidad || 0) * Number(formData.precioUnitario || 0);
+  const totalCalculado = Number(formData.cantidad || 0) * Number(String(formData.precioUnitario || "0").replace(/\D/g, ""));
 
   return (
     <div className="ventas-container">
@@ -679,11 +690,12 @@ function Ventas({ currentUserDisplayName }) {
                 <div className="ven-form-group">
                   <label htmlFor="precioUnitario">Precio Unitario ($ COP)<span className="required-mark">*</span></label>
                   <input 
-                    type="number" 
+                    type="text" 
+                    inputMode="numeric"
                     id="precioUnitario"
                     name="precioUnitario"
                     min="0"
-                    placeholder="0"
+                    placeholder="Ej. 150.000"
                     value={formData.precioUnitario}
                     onChange={handleInputChange}
                     className={`ven-input ${formErrors.precioUnitario ? "error" : ""}`}
