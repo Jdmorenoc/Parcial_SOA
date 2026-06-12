@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import './ResetPage.css';
 
 export default function ResetPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, verifyResetCode, confirmReset } = useAuth();
+  const [searchParams] = useSearchParams();
   const [formData, setFormData] = useState({
     password: '',
     confirmPassword: ''
@@ -14,6 +15,8 @@ export default function ResetPage() {
   const [toastVisible, setToastVisible] = useState(false);
   const [emailRecuperacion, setEmailRecuperacion] = useState('');
   const [mensajeError, setMensajeError] = useState('');
+  const [oobCode, setOobCode] = useState(null);
+  const [verificando, setVerificando] = useState(true);
   const navigate = useNavigate();
 
   // Redirigir al inicio si ya está autenticado
@@ -23,16 +26,41 @@ export default function ResetPage() {
     }
   }, [user, authLoading, navigate]);
 
-  // Obtener email del localStorage al montar el componente
+  // Verificar el oobCode de la URL o fallback a localStorage
   useEffect(() => {
-    const email = localStorage.getItem('emailRecuperacion');
-    if (!email) {
-      setMensajeError('No hay solicitud de recuperación. Por favor, intenta nuevamente desde ¿Olvidaste tu contraseña?');
-      setTimeout(() => navigate('/forgot'), 2000);
+    const code = searchParams.get('oobCode');
+
+    if (code) {
+      // Flujo Firebase: verificar el código de restablecimiento
+      setOobCode(code);
+      verifyResetCode(code)
+        .then((email) => {
+          setEmailRecuperacion(email);
+          setVerificando(false);
+        })
+        .catch((error) => {
+          console.error("Error al verificar código de restablecimiento:", error);
+          setMensajeError(
+            'El enlace de recuperación ha expirado o es inválido. Por favor, solicita uno nuevo.'
+          );
+          setVerificando(false);
+          setTimeout(() => navigate('/forgot'), 3000);
+        });
     } else {
-      setEmailRecuperacion(email);
+      // Flujo legacy: usar email de localStorage
+      const email = localStorage.getItem('emailRecuperacion');
+      if (!email) {
+        setMensajeError(
+          'No hay solicitud de recuperación. Por favor, intenta nuevamente desde ¿Olvidaste tu contraseña?'
+        );
+        setVerificando(false);
+        setTimeout(() => navigate('/forgot'), 2000);
+      } else {
+        setEmailRecuperacion(email);
+        setVerificando(false);
+      }
     }
-  }, [navigate]);
+  }, [searchParams, navigate, verifyResetCode]);
 
   const validatePassword = (password) => {
     return (
@@ -91,26 +119,40 @@ export default function ResetPage() {
     if (errors[name]) setErrors((prev) => ({ ...prev, [name]: '' }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
-    if (validateForm() && emailRecuperacion) {
-      // Obtener usuarios y actualizar contraseña
+    if (!validateForm() || !emailRecuperacion) return;
+
+    if (oobCode) {
+      // Flujo Firebase: confirmar el restablecimiento con el oobCode
+      try {
+        await confirmReset(oobCode, formData.password);
+        console.log('✅ Contraseña actualizada en Firebase Auth para:', emailRecuperacion);
+        setResetExitoso(true);
+      } catch (error) {
+        console.error('Error al restablecer contraseña:', error);
+        if (error.code === 'auth/expired-action-code') {
+          setMensajeError('El enlace de recuperación ha expirado. Por favor, solicita uno nuevo.');
+        } else if (error.code === 'auth/invalid-action-code') {
+          setMensajeError('El enlace de recuperación es inválido o ya fue utilizado.');
+        } else if (error.code === 'auth/weak-password') {
+          setErrors({ password: 'La contraseña es muy débil. Intenta con una más segura.' });
+        } else {
+          setMensajeError(error.message || 'Error al restablecer la contraseña.');
+        }
+      }
+    } else {
+      // Flujo legacy: actualizar en localStorage
       const usuariosGuardados = JSON.parse(localStorage.getItem('usuarios') || '[]');
       const usuarioIndex = usuariosGuardados.findIndex(
         u => u.email.toLowerCase() === emailRecuperacion.toLowerCase()
       );
 
       if (usuarioIndex !== -1) {
-        // Actualizar contraseña del usuario
         usuariosGuardados[usuarioIndex].password = formData.password;
-        
-        // Guardar cambios en localStorage
         localStorage.setItem('usuarios', JSON.stringify(usuariosGuardados));
-
-        console.log('✅ Contraseña actualizada para:', emailRecuperacion);
-        console.log('Nueva contraseña:', formData.password);
-        
+        console.log('✅ Contraseña actualizada (localStorage) para:', emailRecuperacion);
         setResetExitoso(true);
       } else {
         setMensajeError('No se encontró la cuenta. Por favor intenta de nuevo.');
@@ -131,7 +173,24 @@ export default function ResetPage() {
           )}
         </div>
 
-        {mensajeError ? (
+        {verificando ? (
+          <div style={{
+            padding: '40px 20px',
+            textAlign: 'center',
+            color: '#7A9AC7'
+          }}>
+            <div style={{
+              width: '36px',
+              height: '36px',
+              border: '3px solid rgba(122, 154, 199, 0.2)',
+              borderTopColor: '#7A9AC7',
+              borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite',
+              margin: '0 auto 16px'
+            }} />
+            <p>Verificando enlace de recuperación...</p>
+          </div>
+        ) : mensajeError ? (
           <div style={{
             padding: '20px',
             textAlign: 'center',

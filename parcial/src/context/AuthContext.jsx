@@ -9,6 +9,8 @@ import {
   GoogleAuthProvider,
   GithubAuthProvider,
   sendPasswordResetEmail,
+  confirmPasswordReset,
+  verifyPasswordResetCode,
 } from "firebase/auth";
 import {
   setDoc,
@@ -127,7 +129,28 @@ export function AuthProvider({ children }) {
 
   const resetPassword = async (email) => {
     try {
-      await sendPasswordResetEmail(auth, email);
+      const actionCodeSettings = {
+        url: `${window.location.origin}/reset`,
+        handleCodeInApp: true,
+      };
+      await sendPasswordResetEmail(auth, email, actionCodeSettings);
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const verifyResetCode = async (oobCode) => {
+    try {
+      const email = await verifyPasswordResetCode(auth, oobCode);
+      return email;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const confirmReset = async (oobCode, newPassword) => {
+    try {
+      await confirmPasswordReset(auth, oobCode, newPassword);
     } catch (error) {
       throw error;
     }
@@ -328,6 +351,8 @@ export function AuthProvider({ children }) {
         signInWithFacebook,
         signInWithGithub,
         resetPassword,
+        verifyResetCode,
+        confirmReset,
       }}
     >
       {children}
